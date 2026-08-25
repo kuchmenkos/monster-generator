@@ -1,4 +1,5 @@
 import {
+  Container,
   Particle,
   ParticleContainer,
   Rectangle,
@@ -23,6 +24,19 @@ function getParticleTexture(): Texture {
   return particleTexture;
 }
 
+function makeParticleLayer(): ParticleContainer {
+  return new ParticleContainer({
+    dynamicProperties: {
+      position: true,
+      scale: true,
+      color: true,
+      rotation: false,
+      vertex: false,
+    },
+    roundPixels: false,
+  });
+}
+
 interface LiveParticle {
   home: MonsterParticle;
   sprite: Particle;
@@ -37,11 +51,15 @@ export interface MonsterViewOptions {
 
 /**
  * Solid-grid monster with lively idle: wobble, glances, pupil saccades.
+ * Ground shadow lives in a separate non-rotating layer under the body.
  * Screen Y is inverted vs world Y so legs point down.
  */
-export class MonsterView extends ParticleContainer {
+export class MonsterView extends Container {
   readonly data: MonsterData;
+  private readonly bodyLayer: ParticleContainer;
+  private readonly shadowLayer: ParticleContainer;
   private readonly live: LiveParticle[] = [];
+  private readonly shadowLive: LiveParticle[] = [];
   private displayScale: number;
   private blinkTimer = 0;
   private blinkActive = 0;
@@ -52,9 +70,8 @@ export class MonsterView extends ParticleContainer {
   private elapsed = 0;
   private cellPx: number;
 
-  // Personality-driven animation state
   private nextGlanceAt: number;
-  private glanceT = 0; // 0 idle, 0→1→0 during glance
+  private glanceT = 0;
   private glanceDir = 1;
   private glanceActive = false;
   private pupilOx = 0;
@@ -69,10 +86,7 @@ export class MonsterView extends ParticleContainer {
   private nextSaccadeAt: number;
   private shiverT = 0;
   private nextShiverAt: number;
-  private containerScaleX = 1;
-  private containerScaleY = 1;
 
-  // Talk animation
   private talking = false;
   private talkT = 0;
   private talkDuration = 0;
@@ -83,22 +97,19 @@ export class MonsterView extends ParticleContainer {
   private lastPhrase = '';
 
   constructor(options: MonsterViewOptions) {
-    super({
-      dynamicProperties: {
-        position: true,
-        scale: true,
-        color: true,
-        rotation: false,
-        vertex: false,
-      },
-      roundPixels: false,
-    });
+    super();
 
     this.data = options.data;
     this.displayScale = options.scale ?? 40;
     this.cellPx = Math.max(2, options.data.cellSize * this.displayScale * 1.18);
     this.eventMode = 'static';
     this.cursor = 'pointer';
+
+    this.shadowLayer = makeParticleLayer();
+    this.bodyLayer = makeParticleLayer();
+    // Shadow behind body; neither inherits the other's rotation
+    this.addChild(this.shadowLayer);
+    this.addChild(this.bodyLayer);
 
     const tex = getParticleTexture();
     const s = this.displayScale;
@@ -115,8 +126,13 @@ export class MonsterView extends ParticleContainer {
         tint: p.color,
         alpha: p.part === 'fleck' ? 0.85 : p.part === 'aura' ? 0.55 : 1,
       });
-      this.addParticle(sp);
-      this.live.push({ home: p, sprite: sp, part: p.part });
+      if (p.part === 'aura') {
+        this.shadowLayer.addParticle(sp);
+        this.shadowLive.push({ home: p, sprite: sp, part: p.part });
+      } else {
+        this.bodyLayer.addParticle(sp);
+        this.live.push({ home: p, sprite: sp, part: p.part });
+      }
     }
 
     const anim = options.data.anim;
@@ -130,6 +146,21 @@ export class MonsterView extends ParticleContainer {
 
     this.refreshBounds();
     this.updateHitArea();
+    this.layoutStaticShadow();
+  }
+
+  /** Axis-aligned oval under the body bbox — never rotates with wobble. */
+  private layoutStaticShadow(): void {
+    const scale = this.displayScale;
+    for (const { home, sprite } of this.shadowLive) {
+      sprite.x = home.x * scale;
+      sprite.y = -home.y * scale;
+      const px = Math.max(2, this.cellPx * home.size);
+      sprite.scaleX = px / 16;
+      sprite.scaleY = px / 16;
+      sprite.alpha = 0.55;
+    }
+    this.shadowLayer.update();
   }
 
   private updateHitArea(): void {
@@ -161,6 +192,7 @@ export class MonsterView extends ParticleContainer {
     this.cellPx = Math.max(2, this.data.cellSize * scale * 1.18);
     this.refreshBounds();
     this.updateHitArea();
+    this.layoutStaticShadow();
   }
 
   fitInto(boxW: number, boxH: number): void {
@@ -175,10 +207,6 @@ export class MonsterView extends ParticleContainer {
     return this.talking;
   }
 
-  /**
-   * Unique per-seed talk: open/close jaw over syllables.
-   * Returns the spoken phrase.
-   */
   talk(phrase: string): string {
     if (this.talking) return this.lastPhrase;
     const anim = this.data.anim;
@@ -187,7 +215,6 @@ export class MonsterView extends ParticleContainer {
     this.talkDuration = anim.talkSyllables / Math.max(0.5, anim.talkRate);
     this.lastPhrase = phrase;
     this.talkClickIndex++;
-    // Per-syllable amplitude (deterministic-ish via index + random)
     this.sylAmps = [];
     for (let i = 0; i < anim.talkSyllables; i++) {
       this.sylAmps.push(0.4 + Math.random() * 0.6);
@@ -196,12 +223,10 @@ export class MonsterView extends ParticleContainer {
     return phrase;
   }
 
-  /** Ease in-out for syllable envelope. */
   private easeIO(x: number): number {
     return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
   }
 
-  /** Advance talk clock; returns jaw open 0–1. */
   private updateTalk(dt: number): number {
     if (!this.talking) return 0;
     this.talkT += dt;
@@ -215,7 +240,6 @@ export class MonsterView extends ParticleContainer {
 
     const sylIdx = Math.min(this.sylAmps.length - 1, Math.floor(this.talkT * anim.talkRate));
     const sylPhase = (this.talkT * anim.talkRate) % 1;
-    // Open → close with ease
     const raw = sylPhase < 0.45 ? sylPhase / 0.45 : 1 - (sylPhase - 0.45) / 0.55;
     let open = this.easeIO(Math.max(0, Math.min(1, raw))) * (this.sylAmps[sylIdx] ?? 0.7);
 
@@ -225,10 +249,6 @@ export class MonsterView extends ParticleContainer {
     return open;
   }
 
-  /**
-   * Point pupils toward a world-space position (detail view pointer).
-   * Pass null to resume idle saccades.
-   */
   lookAt(worldX: number | null, worldY?: number): void {
     if (worldX === null || worldY === undefined) {
       this.lookFollow = false;
@@ -247,7 +267,6 @@ export class MonsterView extends ParticleContainer {
     const { jitteriness, heaviness, curiosity } = anim;
     const cell = this.data.cellSize;
 
-    // Blink
     if (this.blinkActive > 0) {
       this.blinkActive -= dt * 8;
       if (this.blinkActive < 0) this.blinkActive = 0;
@@ -262,7 +281,6 @@ export class MonsterView extends ParticleContainer {
     const blinkAmt = this.blinkActive;
     const blink = blinkAmt > 0.5 ? (1 - blinkAmt) * 2 : blinkAmt * 2;
 
-    // Bounce
     this.nextBounceCheck -= dt;
     if (this.nextBounceCheck <= 0) {
       this.nextBounceCheck = 2 + Math.random() * 4 + heaviness * 2;
@@ -279,7 +297,6 @@ export class MonsterView extends ParticleContainer {
       }
     }
 
-    // Mini-turn glance
     if (!this.glanceActive) {
       this.nextGlanceAt -= dt;
       if (this.nextGlanceAt <= 0 && Math.random() < 0.35 + curiosity * 0.5) {
@@ -306,7 +323,6 @@ export class MonsterView extends ParticleContainer {
     const turnScaleX = 1 - g * 0.14;
     const turnRot = this.glanceDir * g * (0.08 + curiosity * 0.04);
 
-    // Eye-roll burst (rare)
     if (this.eyeRollT > 0) {
       this.eyeRollT -= dt;
       const ang = (1 - this.eyeRollT / 0.7) * Math.PI * 2;
@@ -321,7 +337,6 @@ export class MonsterView extends ParticleContainer {
       }
 
       if (this.lookFollow) {
-        // Local offset from monster center toward pointer
         const lx = (this.lookWorldX - this.x) / scale;
         const ly = -(this.lookWorldY - this.y) / scale;
         const amp = (0.45 + curiosity * 0.35) * cell;
@@ -339,12 +354,10 @@ export class MonsterView extends ParticleContainer {
       }
     }
 
-    // Smooth lerp pupils toward target
     const lerpSpeed = (6 + curiosity * 8) * dt;
     this.pupilOx += (this.pupilTx - this.pupilOx) * Math.min(1, lerpSpeed);
     this.pupilOy += (this.pupilTy - this.pupilOy) * Math.min(1, lerpSpeed);
 
-    // Shiver burst
     if (this.shiverT > 0) {
       this.shiverT -= dt;
     } else {
@@ -358,35 +371,35 @@ export class MonsterView extends ParticleContainer {
     }
     const shiver = this.shiverT > 0 ? 0.012 + jitteriness * 0.02 : 0;
 
-    // Continuous wobble rotation
     const wobbleAmp = (0.025 + (1 - heaviness) * 0.035) * (0.7 + jitteriness * 0.5);
     const wobble = Math.sin(t * anim.swayFreq * 0.85) * wobbleAmp;
-    this.rotation = wobble + turnRot;
+    let bodyRot = wobble + turnRot;
 
     const breath = Math.sin(t * anim.breathFreq) * anim.breathAmp;
     const swayBase = Math.sin(t * anim.swayFreq) * anim.swayAmp;
     const jaw = this.updateTalk(dt);
-    // Scale talk amp by scaleRef so finer grids still open visibly
     const sr = this.data.scaleRef || 1;
     const jawRaw = jaw * anim.talkAmp * cell * Math.max(1.15, sr * 0.55);
-    // Quarter-cell snap; keep true zero when jaw is closed
     const quant = cell * 0.25;
     const jawAmt =
       jaw <= 0 || quant <= 0 ? 0 : Math.max(quant, Math.round(jawRaw / quant) * quant);
 
-    // Body squash in talk rhythm + stronger nod
     let talkSquash = 0;
     if (this.talking) {
-      this.rotation += Math.sin(this.talkT * anim.talkRate * Math.PI * 2) * 0.07 * jaw;
+      bodyRot += Math.sin(this.talkT * anim.talkRate * Math.PI * 2) * 0.07 * jaw;
       talkSquash = Math.sin(this.talkT * anim.talkRate * Math.PI * 2) * 0.04 * jaw;
     }
 
     const bounceSquash = this.bounceActive > 0.01 ? Math.min(0.08, this.bounceActive * 0.35) : 0;
-    this.containerScaleX = turnScaleX * (1 + bounceSquash) * (1 - talkSquash * 0.5);
-    this.containerScaleY = (1 - bounceSquash * 0.9) * (1 + talkSquash);
-    this.scale.set(this.containerScaleX, this.containerScaleY);
+    // Rotation / squash only on body — shadow stays axis-aligned under feet
+    this.bodyLayer.rotation = bodyRot;
+    this.bodyLayer.scale.set(
+      turnScaleX * (1 + bounceSquash) * (1 - talkSquash * 0.5),
+      (1 - bounceSquash * 0.9) * (1 + talkSquash),
+    );
+    this.rotation = 0;
+    this.scale.set(1, 1);
 
-    // Squint eyes on loud syllables
     const talkSquint = this.talking && jaw > 0.65 ? 0.3 * jaw : 0;
 
     for (const { home, sprite, part } of this.live) {
@@ -399,13 +412,7 @@ export class MonsterView extends ParticleContainer {
       const heightFactor = Math.min(1.2, Math.max(0, (home.y + 1) * 0.5));
       const depthFactor = 0.55 + home.z * 0.85;
       const appendBoost =
-        part === 'appendage'
-          ? 1 + home.tipFactor * 1.6
-          : part === 'fleck'
-            ? 2.4
-            : part === 'aura'
-              ? 1.4
-              : 1;
+        part === 'appendage' ? 1 + home.tipFactor * 1.6 : part === 'fleck' ? 2.4 : 1;
       const sway =
         (swayBase + Math.sin(t * anim.swayFreq + home.row * 0.15) * anim.swayAmp * 0.25) *
         heightFactor *
@@ -413,12 +420,10 @@ export class MonsterView extends ParticleContainer {
         appendBoost;
       x += sway;
 
-      // Coherent body: only rim / limbs / flecks jiggle independently
       const canJig =
         (home.isRim && part !== 'body') ||
         (part === 'appendage' && home.tipFactor > 0.28) ||
         part === 'fleck' ||
-        part === 'aura' ||
         home.tipFactor > 0.28;
       if (canJig) {
         const jig = anim.jiggleAmp * (0.4 + home.tipFactor * 1.2) * (1 + jitteriness);
@@ -433,13 +438,11 @@ export class MonsterView extends ParticleContainer {
 
       y += this.bounceActive * (1 - Math.abs(home.x) * 0.3);
 
-      // Talk opens from rest: sealed → lips part; grin → small pulse; open → moderated pump
       const role = home.mouthRole;
       let cavityStretch = 1;
       const rest = this.data.mouthRest ?? 'sealed';
       if (jawAmt > 0 && role) {
         if (rest === 'sealed') {
-          // Clear lip separation in cell units so talk reads on sealed lines
           const openCells = Math.max(1.2, (jawAmt / Math.max(1e-6, cell)) * 1.35);
           if (role === 'lower' || role === 'tongue') y -= jawAmt * 1.25;
           else if (role === 'upper') y += jawAmt * 0.35;
@@ -455,7 +458,6 @@ export class MonsterView extends ParticleContainer {
             y -= jawAmt * 0.3;
           }
         } else {
-          // open rest: avoid double-scream — softer jaw pump, upper almost still
           const openMul = 0.55;
           if (role === 'lower' || role === 'tongue') y -= jawAmt * openMul;
           else if (role === 'cavity') {
@@ -473,7 +475,6 @@ export class MonsterView extends ParticleContainer {
           ox = Math.max(-pr.x, Math.min(pr.x, ox));
           oy = Math.max(-pr.y, Math.min(pr.y, oy));
         } else {
-          // Fallback: clamp to ~0.6 cell
           const lim = cell * 0.55;
           ox = Math.max(-lim, Math.min(lim, ox));
           oy = Math.max(-lim * 0.7, Math.min(lim * 0.7, oy));
@@ -499,7 +500,6 @@ export class MonsterView extends ParticleContainer {
 
       let alpha = 1;
       if (part === 'fleck') alpha = 0.85;
-      else if (part === 'aura') alpha = 0.55;
       if (home.glow) {
         const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(t * 3.4 + home.phase));
         alpha = pulse;
@@ -512,11 +512,13 @@ export class MonsterView extends ParticleContainer {
       sprite.scaleY = (px / 16) * scaleYMul;
     }
 
-    this.update();
+    this.bodyLayer.update();
+    // Shadow stays put (equal gap under feet); only refresh if scale changed mid-frame
   }
 
   destroy(options?: boolean | { children?: boolean; texture?: boolean }): void {
-    this.removeParticles(0, this.particleChildren.length);
+    this.bodyLayer.removeParticles(0, this.bodyLayer.particleChildren.length);
+    this.shadowLayer.removeParticles(0, this.shadowLayer.particleChildren.length);
     super.destroy(options);
   }
 }

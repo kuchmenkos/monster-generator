@@ -124,7 +124,7 @@ export function generateMonster(seed: string): MonsterData {
     }
   }
 
-  // Prefer a limbed candidate unless the limbless one scores much higher
-  if (bestLimbed && bestLimbedScore >= bestScore - 12) return bestLimbed;
+  // Prefer a limbed candidate only if clearly better — limbless likes should win often
+  if (bestLimbed && bestLimbedScore >= bestScore + 6) return bestLimbed;
   return best!;
 }

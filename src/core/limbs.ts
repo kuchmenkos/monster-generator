@@ -490,24 +490,17 @@ export function applyLimbs(
     return;
   }
 
-  if (rng.chance(0.97)) addLegs(grid, rng, palette);
-  if (rng.chance(0.8)) addArms(grid, rng, palette);
-  if (rng.chance(0.35)) addTail(grid, rng, palette);
-  if (rng.chance(0.2)) addWings(grid, rng, palette);
+  // Stubby legs often; limbless ok (likes). Arms less common — avoid scribble clutter.
+  if (rng.chance(0.72)) addLegs(grid, rng, palette);
+  if (rng.chance(0.4)) addArms(grid, rng, palette);
+  if (rng.chance(0.28)) addTail(grid, rng, palette);
+  if (rng.chance(0.12)) addWings(grid, rng, palette);
 
-  const headStyles = rng.shuffle(['horns', 'antennae', 'ears'] as const);
-  const headCount = rng.pick([1, 1, 2]);
-  for (let i = 0; i < headCount; i++) {
-    switch (headStyles[i]) {
-      case 'horns':
-        addHorns(grid, rng, palette);
-        break;
-      case 'antennae':
-        addAntennae(grid, rng, palette);
-        break;
-      case 'ears':
-        addEars(grid, rng, palette);
-        break;
-    }
+  // At most one head prop — short tufts, not hair stacks
+  if (rng.chance(0.55)) {
+    const head = rng.pick(['horns', 'antennae', 'ears'] as const);
+    if (head === 'horns') addHorns(grid, rng, palette);
+    else if (head === 'antennae') addAntennae(grid, rng, palette);
+    else addEars(grid, rng, palette);
   }
 }

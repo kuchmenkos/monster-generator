@@ -141,11 +141,21 @@ function applyBelly(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void 
 function applySpots(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
   const body = bodyCells(grid);
   if (body.length === 0) return;
-  const count = rng.int(4, 10);
+  const minR = Math.min(...body.map((c) => c.row));
+  const maxR = Math.max(...body.map((c) => c.row));
+  // Keep spots off the upper face third so they don't muddy the face cluster
+  const faceCut = minR + Math.floor((maxR - minR) * 0.55);
+  const candidates = body.filter((c) => c.row <= faceCut);
+  const pool = candidates.length >= 8 ? candidates : body;
+  const count = rng.int(2, 5);
   for (let i = 0; i < count; i++) {
-    const center = body[rng.int(0, body.length - 1)]!;
-    const radius = rng.int(1, 3);
-    const tint = rng.chance(0.45) ? palette.accent : rng.chance(0.5) ? palette.accent2 : darken(center.color, 0.22);
+    const center = pool[rng.int(0, pool.length - 1)]!;
+    const radius = rng.int(1, 2);
+    const tint = rng.chance(0.5)
+      ? darken(palette.base, 0.14)
+      : rng.chance(0.55)
+        ? darken(palette.accent, 0.08)
+        : lighten(palette.base, 0.1);
     for (const c of body) {
       const d = Math.hypot(c.col - center.col, c.row - center.row);
       if (d <= radius) c.color = tint;
@@ -157,7 +167,8 @@ function applyStripes(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): voi
   const body = bodyCells(grid);
   if (body.length === 0) return;
   const period = rng.int(3, 6);
-  const alt = rng.chance(0.5) ? palette.accent : darken(palette.base, 0.16);
+  // Soft tone shift of base — not a foreign hue across half the body
+  const alt = rng.chance(0.5) ? darken(palette.base, 0.12) : lighten(palette.base, 0.1);
   for (const c of body) {
     if (Math.floor(c.row / period) % 2 === 0) c.color = alt;
   }
@@ -169,32 +180,35 @@ function applyGradient(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): vo
   const minR = Math.min(...body.map((c) => c.row));
   const maxR = Math.max(...body.map((c) => c.row));
   const span = Math.max(1, maxR - minR);
-  const top = rng.chance(0.5) ? palette.highlight : palette.accent;
-  const bot = rng.chance(0.5) ? palette.shadow : palette.accent2;
+  const top = lighten(palette.base, rng.float(0.06, 0.14));
+  const bot = darken(palette.base, rng.float(0.1, 0.2));
   for (const c of body) {
     const t = (c.row - minR) / span;
-    const dither = (c.col + c.row) % 3 === 0 ? 0.08 : 0;
-    const u = Math.min(1, Math.max(0, t + dither));
-    c.color = u < 0.45 ? top : u < 0.55 ? c.color : bot;
-    if (u >= 0.45 && u < 0.55 && (c.col + c.row) % 2 === 0) c.color = top;
+    // Soft 4-band blend — no hard mid cut
+    if (t < 0.28) c.color = top;
+    else if (t < 0.45) c.color = (c.col + c.row) % 2 === 0 ? top : c.color;
+    else if (t < 0.62) c.color = (c.col + c.row) % 2 === 0 ? bot : c.color;
+    else c.color = bot;
   }
 }
 
-function applyDualGradient(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
+function applyDualGradient(grid: MonsterGrid, _rng: Rng, palette: MonsterPalette): void {
   const body = bodyCells(grid);
   if (body.length === 0) return;
   const minC = Math.min(...body.map((c) => c.col));
   const maxC = Math.max(...body.map((c) => c.col));
   const minR = Math.min(...body.map((c) => c.row));
   const maxR = Math.max(...body.map((c) => c.row));
-  const a = rng.chance(0.5) ? palette.accent : palette.highlight;
-  const b = rng.chance(0.5) ? palette.accent2 : palette.shadow;
+  // Near-base tones only — avoid accent vs accent2 half-split
+  const a = lighten(palette.base, 0.1);
+  const b = darken(palette.base, 0.14);
   for (const c of body) {
     const tx = (c.col - minC) / Math.max(1, maxC - minC);
     const ty = (c.row - minR) / Math.max(1, maxR - minR);
     const t = (tx + ty) * 0.5;
     const dither = (c.col * 3 + c.row * 5) % 4;
-    if (t + dither * 0.04 < 0.5) c.color = a;
+    if (t + dither * 0.05 < 0.42) c.color = a;
+    else if (t + dither * 0.05 < 0.58) c.color = (c.col + c.row) % 2 === 0 ? a : b;
     else c.color = b;
   }
 }
@@ -285,6 +299,8 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
     'plain',
     'plain',
     'plain',
+    'plain',
+    'belly',
     'belly',
     'belly',
     'spots',
@@ -292,11 +308,11 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
     'stripes',
     'gradient',
     'rosettes',
-    'scales',
     'stripes-curved',
-    'mask',
-    'bio-glow',
     'dual-gradient',
+    'mask',
+    'scales',
+    'bio-glow',
   ]);
 
   switch (kind) {
@@ -334,12 +350,9 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
       break;
   }
 
-  // Rare extra accent scatter
-  if (rng.chance(0.35)) {
-    applySpots(grid, rng, palette);
-  }
-  if (rng.chance(0.12)) {
-    applyBioGlow(grid, rng, palette);
+  // Occasional soft accent dots — rare, never stacked on noisy coats
+  if (kind === 'plain' || kind === 'belly') {
+    if (rng.chance(0.22)) applySpots(grid, rng, palette);
   }
 
   // Crisp outline on body silhouette only — limbs stay body-tinted so they read attached

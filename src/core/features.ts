@@ -40,7 +40,11 @@ function put(
   size = 1,
   mouthRole?: MouthRole,
 ): void {
-  grid.cells.set(cellKey(col, row), {
+  const key = cellKey(col, row);
+  const existing = grid.cells.get(key);
+  // Never overwrite eyes — prevents mouth/nose "eating" the face cluster
+  if (existing && (existing.part === 'eye' || existing.part === 'pupil')) return;
+  grid.cells.set(key, {
     col,
     row,
     x: grid.originX + col * grid.cell,
@@ -482,29 +486,30 @@ function paintMouthFromCurve(
   noseBottom: number | null,
 ): MouthRest {
   const sr = grid.scaleRef;
-  // Rest-biased pick: mostly closed / grin, rare open maw
+  // Character mouths like likes: open/grin often; thin sealed only sometimes
   const style = rng.pick<MouthStyle>([
-    'closed-line',
-    'closed-line',
-    'closed-line',
-    'closed-line',
-    'closed-line',
-    'tiny',
-    'tiny',
-    'zigzag',
-    'zigzag',
     'open-maw',
     'open-maw',
+    'open-maw',
+    'open-maw',
+    'zigzag',
+    'zigzag',
+    'zigzag',
+    'tiny',
+    'tiny',
+    'closed-line',
+    'closed-line',
     'tongue-out',
   ]);
 
   const lipColor = palette.lip ?? darken(palette.mouth, 0.05);
   const cavityColor = darken(palette.mouth, 0.45);
   const tooth = creamTooth(palette);
-  const curve = rng.pick<LipCurveKind>(['smile', 'smile', 'scowl', 'wave', 'skew', 'flat']);
+  const curve = rng.pick<LipCurveKind>(['smile', 'smile', 'smile', 'scowl', 'wave', 'skew']);
   const amp = rng.float(0.8, 2.4) * Math.max(1, sr * 0.5);
   const skew = rng.float(-1.2, 1.2);
 
+  // Hard clearance under eyes — never paint into the eye cluster
   const maxMouthTop = Math.min(
     lowestEyeRow - 2,
     noseBottom != null ? noseBottom - 1 : Infinity,
@@ -515,32 +520,30 @@ function paintMouthFromCurve(
   }
 
   if (style === 'tiny') {
-    const ox = rng.int(-Math.floor(halfW * 0.4), Math.floor(halfW * 0.4));
+    const ox = rng.int(-Math.floor(halfW * 0.35), Math.floor(halfW * 0.35));
     const oy = rng.int(-1, 1);
     const cx = midC + ox;
     const cy = Math.min(lipMid + oy, maxMouthTop - 1);
     const rw = rng.int(1, 2);
-    // Sealed tiny: upper + lower lips, thin cavity slit
+    // Thin sealed: upper + optional cavity slit only (no outline sandwich / grill)
     for (let dx = -rw; dx <= rw; dx++) {
       putMouth(grid, cx + dx, cy + 1, base, lipColor, 'mouth', 'upper', true);
       putMouth(grid, cx + dx, cy, base, cavityColor, 'mouth', 'cavity', true);
       putMouth(grid, cx + dx, cy - 1, base, lipColor, 'mouth', 'lower', true);
     }
-    putMouth(grid, cx, cy + 2, base, palette.outline, 'outline', 'upper', true);
-    putMouth(grid, cx, cy - 2, base, palette.outline, 'outline', 'lower', true);
     return 'sealed';
   }
 
   const faceWApprox = halfW * 2;
-  const W = Math.max(2, Math.floor(faceWApprox * rng.float(0.15, 0.275)));
+  const W = Math.max(2, Math.floor(faceWApprox * rng.float(0.12, 0.2)));
 
   let openUp = 0;
   let openDown = 0;
   if (style === 'open-maw') {
-    // Smaller default open at rest — not a scream
+    // Characterful but not a scream (likes: open smile / small maw)
     const open = Math.max(
       2,
-      Math.min(Math.floor(faceH * rng.float(0.12, 0.22)), Math.round(rng.float(2, 5) * sr * 0.5)),
+      Math.min(Math.floor(faceH * rng.float(0.1, 0.18)), Math.round(rng.float(2, 4) * sr * 0.5)),
     );
     openUp = Math.floor(open * 0.35);
     openDown = Math.max(1, open - openUp);
@@ -558,15 +561,13 @@ function paintMouthFromCurve(
     lipRows[dx + W] = lipRowAt(lipMid, t, curve, amp, skew);
   }
 
-  // --- Sealed / grin: proper upper + lower + thin slit ---
+  // --- Sealed / grin: max 2 lip rows + slit — never 5-line grill ---
   if (style === 'closed-line' || style === 'zigzag') {
     for (let dx = -W; dx <= W; dx++) {
       const lip = lipRows[dx + W]!;
       putMouth(grid, midC + dx, lip + 1, base, lipColor, 'mouth', 'upper', true);
       putMouth(grid, midC + dx, lip, base, cavityColor, 'mouth', 'cavity', true);
       putMouth(grid, midC + dx, lip - 1, base, lipColor, 'mouth', 'lower', true);
-      putMouth(grid, midC + dx, lip + 2, base, palette.outline, 'outline', 'upper', true);
-      putMouth(grid, midC + dx, lip - 2, base, palette.outline, 'outline', 'lower', true);
     }
 
     if (style === 'zigzag') {
@@ -634,7 +635,7 @@ function paintMouthFromCurve(
         }
       }
     }
-    return 'open';
+    return 'grin';
   }
 
   // tongue-out
@@ -673,7 +674,7 @@ function paintMouthFromCurve(
 }
 
 /**
- * Extreme, characterful faces — big eyes, optional nose, rest-biased mouths.
+ * Extreme, characterful faces — big eyes, optional nose, character mouths.
  */
 export function applyFeatures(
   rng: Rng,
@@ -681,8 +682,8 @@ export function applyFeatures(
   palette: MonsterPalette,
   bodyArchetype = 'blob',
 ): MouthRest {
-  const shiftX = rng.float(-1, 1);
-  const shiftY = rng.float(-0.6, 0.8);
+  const shiftX = rng.float(-0.6, 0.6);
+  const shiftY = rng.float(-0.4, 0.5);
   const region = faceRegion(grid, shiftX, shiftY);
   if (region.length < 8) return 'sealed';
 
@@ -697,18 +698,29 @@ export function applyFeatures(
   const base = region.reduce((a, b) => (a.z >= b.z ? a : b));
   const sr = grid.scaleRef;
 
+  // Bias toward cyclops / big readable eyes (likes); cluster rare
   const eyePick: EyeArchetype[] =
     bodyArchetype === 'bighead'
-      ? ['goggle', 'cyclops-giant', 'cyclops-giant', 'mismatched']
-      : ['masks', 'goggle', 'goggle', 'cyclops-giant', 'cluster', 'mismatched'];
+      ? ['cyclops-giant', 'cyclops-giant', 'goggle', 'mismatched']
+      : [
+          'cyclops-giant',
+          'cyclops-giant',
+          'cyclops-giant',
+          'goggle',
+          'goggle',
+          'mismatched',
+          'masks',
+          'cluster',
+        ];
   const archetype = rng.pick(eyePick);
 
   let lowestEye = midR;
   const eScale = Math.max(1, Math.round(sr * 0.85));
   const goggleShapes: EyeShape[] = ['round', 'diamond', 'wide', 'tall', 'sleepy', 'angry'];
+  const minEye = Math.max(3, Math.floor(faceW * 0.12));
 
   if (archetype === 'goggle') {
-    const w = Math.max(4, Math.min(8 + eScale, Math.floor(faceW * 0.34)));
+    const w = Math.max(minEye, Math.min(8 + eScale, Math.floor(faceW * 0.34)));
     const h = Math.max(3, Math.floor(w * rng.float(0.7, 1.15)));
     const spread = Math.max(w, Math.floor(faceW * 0.28));
     const y = midR - Math.floor(h / 2);
@@ -717,7 +729,7 @@ export function applyFeatures(
     paintEyeShaped(grid, rng, palette, midC + spread - Math.floor(w / 2), y, w, h, rng.pick(goggleShapes), base, 2, iris);
     lowestEye = y;
   } else if (archetype === 'cyclops-giant') {
-    const w = Math.max(5, Math.min(10 + eScale, Math.floor(faceW * rng.float(0.4, 0.6))));
+    const w = Math.max(minEye + 1, Math.min(10 + eScale, Math.floor(faceW * rng.float(0.4, 0.6))));
     const h = Math.max(4, Math.floor(w * rng.float(0.7, 1.1)));
     const y = midR - Math.floor(h / 2);
     paintEyeShaped(
@@ -735,24 +747,28 @@ export function applyFeatures(
     );
     lowestEye = y;
   } else if (archetype === 'cluster') {
-    const count = rng.int(4, 8);
+    // Fewer, larger spots — avoid micro-eyes on empty mass
+    const count = rng.int(3, 5);
     const spots: { x: number; y: number }[] = [];
+    const baseY = midR + rng.int(-1, 1);
     for (let i = 0; i < count; i++) {
-      const x = midC + rng.int(-Math.floor(faceW * 0.45), Math.floor(faceW * 0.45));
-      const y = midR + rng.int(-2, Math.floor((maxR - minR) * 0.35));
+      const x = midC + rng.int(-Math.floor(faceW * 0.35), Math.floor(faceW * 0.35));
+      const y = baseY + rng.int(-1, 1);
       spots.push({ x, y });
-      const s = rng.int(1, 2 + Math.floor(eScale * 0.3));
+      const s = Math.max(2, rng.int(2, 3 + Math.floor(eScale * 0.35)));
       paintEyeShaped(grid, rng, palette, x, y, s, s, rng.pick(['round', 'square', 'slit']), base, 1);
     }
     lowestEye = Math.min(...spots.map((s) => s.y));
   } else if (archetype === 'mismatched') {
-    const bigW = rng.int(4, 7 + Math.floor(eScale * 0.5));
-    const bigH = rng.int(3, 6 + Math.floor(eScale * 0.3));
-    const smallW = rng.int(2, 4);
-    const smallH = rng.int(2, 4);
+    const bigW = Math.max(minEye, rng.int(4, 7 + Math.floor(eScale * 0.5)));
+    const bigH = Math.max(3, rng.int(3, 6 + Math.floor(eScale * 0.3)));
+    const smallW = Math.max(2, rng.int(2, 4));
+    const smallH = Math.max(2, rng.int(2, 4));
     const spread = Math.max(bigW, Math.floor(faceW * 0.25));
-    const yBig = midR - Math.floor(bigH / 2) + rng.int(-1, 2);
-    const ySmall = midR - Math.floor(smallH / 2) + rng.int(-2, 1);
+    // Shared baseline ±1 — size mismatch ok, wild vertical scatter not
+    const yBase = midR - Math.floor(Math.max(bigH, smallH) / 2);
+    const yBig = yBase + rng.int(-1, 1);
+    const ySmall = yBase + rng.int(-1, 1);
     const leftBig = rng.chance(0.5);
     if (leftBig) {
       paintEyeShaped(grid, rng, palette, midC - spread - Math.floor(bigW / 2), yBig, bigW, bigH, rng.pick(['round', 'wide', 'tall']), base, 1, palette.accent);
@@ -766,38 +782,32 @@ export function applyFeatures(
     const shapes = rng.shuffle<EyeShape>([
       'round', 'square', 'tall', 'wide', 'sleepy', 'star', 'diamond', 'droopy', 'angry', 'crescent', 'slit',
     ]);
-    const eyeCount = rng.pick([1, 2, 2, 2, 3]);
+    const eyeCount = rng.pick([1, 2, 2, 2]);
     const makeSize = () => ({
-      w: rng.int(2, Math.min(6 + Math.floor(eScale * 0.45), Math.max(2, Math.floor(faceW / 3.5)))),
-      h: rng.int(2, 5 + Math.floor(eScale * 0.35)),
+      w: rng.int(minEye, Math.min(6 + Math.floor(eScale * 0.45), Math.max(minEye, Math.floor(faceW / 3.5)))),
+      h: rng.int(Math.max(2, minEye - 1), 5 + Math.floor(eScale * 0.35)),
     });
     const eyes: { x: number; y: number; w: number; h: number; shape: EyeShape }[] = [];
     if (eyeCount === 1) {
       const s = makeSize();
       eyes.push({ x: midC - Math.floor(s.w / 2), y: midR - Math.floor(s.h / 2), ...s, shape: shapes[0]! });
-    } else if (eyeCount === 2) {
+    } else {
       const left = makeSize();
       const right = rng.chance(0.55) ? makeSize() : { ...left };
       const spread = Math.max(left.w + 1, Math.floor(faceW * 0.22));
+      const yBase = midR - Math.floor(Math.max(left.h, right.h) / 2);
       eyes.push({
         x: midC - spread - Math.floor(left.w / 2),
-        y: midR - Math.floor(left.h / 2) + rng.int(-1, 1),
+        y: yBase + rng.int(-1, 1),
         ...left,
         shape: shapes[0]!,
       });
       eyes.push({
         x: midC + spread - Math.floor(right.w / 2),
-        y: midR - Math.floor(right.h / 2) + rng.int(-1, 1),
+        y: yBase + rng.int(-1, 1),
         ...right,
         shape: rng.chance(0.5) ? shapes[1]! : shapes[0]!,
       });
-    } else {
-      const s = makeSize();
-      const spread = Math.max(s.w + 1, Math.floor(faceW * 0.22));
-      eyes.push({ x: midC - spread - Math.floor(s.w / 2), y: midR - Math.floor(s.h / 2), ...s, shape: shapes[0]! });
-      eyes.push({ x: midC + spread - Math.floor(s.w / 2), y: midR - Math.floor(s.h / 2), ...s, shape: shapes[0]! });
-      const mid = makeSize();
-      eyes.push({ x: midC - Math.floor(mid.w / 2), y: midR + s.h, ...mid, shape: shapes[1]! });
     }
     for (const e of eyes) {
       paintEyeShaped(grid, rng, palette, e.x, e.y, e.w, e.h, e.shape, base);
@@ -807,7 +817,7 @@ export function applyFeatures(
 
   const faceHalf = Math.max(3, Math.floor(faceW * 0.5));
   const noseBottom = paintNose(grid, rng, palette, midC, midR, faceW, base, lowestEye);
-  return paintMouthFromCurve(
+  const mouthRest = paintMouthFromCurve(
     grid,
     rng,
     palette,
@@ -819,4 +829,21 @@ export function applyFeatures(
     lowestEye,
     noseBottom,
   );
+
+  // Soft cheek blush like likes (~25%) — never on eyes/mouth
+  if (rng.chance(0.25)) {
+    const blush = lighten(palette.accent, 0.15);
+    const cheekY = Math.max(minR + 1, lowestEye - 1);
+    const n = rng.int(1, 3);
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const col = midC + side * rng.int(Math.max(2, Math.floor(faceW * 0.2)), Math.max(3, Math.floor(faceW * 0.35)));
+      const row = cheekY + rng.int(-1, 1);
+      const existing = grid.cells.get(cellKey(col, row));
+      if (!existing || existing.part !== 'body') continue;
+      put(grid, col, row, base, blush, 'body', 0.01, 1);
+    }
+  }
+
+  return mouthRest;
 }
