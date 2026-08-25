@@ -513,13 +513,13 @@ function applyFlecksAndDrips(rng: Rng, grid: MonsterGrid, palette: MonsterPalett
   // Prefer top / side rim for hair tufts
   const topRim = rim.filter((c) => c.row >= midR);
   const anchors = topRim.length >= 2 ? topRim : rim;
-  const tuftCount = rng.int(2, Math.max(3, Math.round(5 * grid.scaleRef * 0.55)));
+  const tuftCount = rng.int(1, Math.max(2, Math.round(3 * grid.scaleRef * 0.45)));
 
   for (let t = 0; t < tuftCount; t++) {
     const start = anchors[rng.int(0, anchors.length - 1)]!;
     const len = rng.int(
-      Math.max(3, Math.round(3 * grid.scaleRef * 0.7)),
-      Math.max(5, Math.round(8 * grid.scaleRef * 0.7)),
+      Math.max(2, Math.round(2 * grid.scaleRef * 0.55)),
+      Math.max(3, Math.round(5 * grid.scaleRef * 0.55)),
     );
     let col = start.col;
     let row = start.row;
@@ -604,16 +604,19 @@ export function applyGroundShadow(grid: MonsterGrid): void {
   const minC = Math.min(...solid.map((c) => c.col));
   const maxC = Math.max(...solid.map((c) => c.col));
   const midC = Math.round((minC + maxC) / 2);
-  const halfW = Math.max(3, Math.floor((maxC - minC) * 0.38));
+  // Width tracks body; fixed vertical gap so shadow sits evenly under feet
+  const halfW = Math.max(4, Math.floor((maxC - minC) * 0.46));
+  const gap = 2; // equal cell inset below lowest solid
   const sample = solid.find((c) => c.row === minR) ?? solid[0]!;
   for (let dx = -halfW; dx <= halfW; dx++) {
     const t = dx / Math.max(1, halfW);
-    const h = Math.max(2, Math.round((1 - t * t) * 2.4));
-    for (let dy = 1; dy <= h; dy++) {
+    const h = Math.max(2, Math.round((1 - t * t) * 2.8));
+    for (let dy = 0; dy < h; dy++) {
       const col = midC + dx;
-      const row = minR - dy;
+      const row = minR - gap - dy;
       const key = cellKey(col, row);
       if (grid.cells.has(key)) continue;
+      const edge = Math.abs(t) > 0.7 || dy === h - 1;
       grid.cells.set(key, {
         col,
         row,
@@ -623,10 +626,10 @@ export function applyGroundShadow(grid: MonsterGrid): void {
         nx: 0,
         ny: -1,
         nz: 0.2,
-        color: 0x2a2240,
+        color: edge ? 0x3a3252 : 0x2a2240,
         part: 'aura',
         phase: 0,
-        size: 1.15,
+        size: edge ? 1.05 : 1.2,
         tipFactor: 0,
       });
     }
