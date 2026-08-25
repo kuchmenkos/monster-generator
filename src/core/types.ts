@@ -6,12 +6,16 @@ export type ParticlePart =
   | 'pupil'
   | 'mouth'
   | 'tooth'
+  | 'nose'
   | 'outline'
   | 'aura'
   | 'fleck';
 
 /** Jaw groups for talk: upper stays, cavity stretches, lower+tongue drop. */
 export type MouthRole = 'upper' | 'cavity' | 'lower' | 'tongue';
+
+/** Rest mouth pose — drives talk animation mode. */
+export type MouthRest = 'sealed' | 'grin' | 'open';
 
 export interface Particle {
   x: number;
@@ -112,6 +116,8 @@ export interface MonsterPalette {
   /** Secondary accent — extra coat color / glow */
   accent2: number;
   mouth: number;
+  /** Lip rim — slightly lighter/warmer than cavity */
+  lip: number;
   eyeWhite: number;
   pupil: number;
 }
@@ -136,6 +142,8 @@ export interface MonsterData {
   particles: Particle[];
   palette: MonsterPalette;
   anim: AnimParams;
+  /** Rest mouth pose for talk animation */
+  mouthRest: MouthRest;
   /** World size of one particle cell (for crisp rendering) */
   cellSize: number;
   /** Feature scale vs baseline resolution 28 */

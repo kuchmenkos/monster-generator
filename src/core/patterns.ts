@@ -44,21 +44,27 @@ function applyCelShading(grid: MonsterGrid, palette: MonsterPalette): void {
   for (const c of solid) {
     const d = c.nx * Lx + c.ny * Ly + c.nz * Lz;
     const pos = -0.45 * ((c.col - midC) / halfW) + 0.35 * ((c.row - midR) / halfH);
-    const dither = (c.col + c.row) % 2 === 0 ? 0.05 : -0.05;
+    const dither = (c.col + c.row) % 2 === 0 ? 0.04 : -0.04;
     const t = d * 0.45 + pos * 0.55 + dither;
+    // 6 soft bands for richer volume (still cel, not smooth gradient)
     let color = palette.base;
-    if (t > 0.28) color = palette.highlight;
-    else if (t > 0.02) color = lighten(palette.base, 0.06);
-    else if (t > -0.22) color = darken(palette.base, 0.16);
+    if (t > 0.38) color = lighten(palette.highlight, 0.06);
+    else if (t > 0.22) color = palette.highlight;
+    else if (t > 0.06) color = lighten(palette.base, 0.1);
+    else if (t > -0.1) color = palette.base;
+    else if (t > -0.28) color = darken(palette.base, 0.14);
     else color = palette.shadow;
-    if (c.ny < -0.25 || (c.row - minR) / (halfH * 2) < 0.22) {
-      color = darken(color, 0.14); // AO underbelly
+    // Stronger underbelly AO
+    if (c.ny < -0.2 || (c.row - minR) / (halfH * 2) < 0.28) {
+      color = darken(color, 0.18);
     }
     c.color = color;
   }
 
+  // Rim light + contact shadow where limbs meet body
   for (const c of solid) {
     let n = 0;
+    let touchesOther = false;
     for (const [dc, dr] of [
       [1, 0],
       [-1, 0],
@@ -66,9 +72,48 @@ function applyCelShading(grid: MonsterGrid, palette: MonsterPalette): void {
       [0, -1],
     ] as const) {
       const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
-      if (nb && (nb.part === 'body' || nb.part === 'appendage')) n++;
+      if (nb && (nb.part === 'body' || nb.part === 'appendage')) {
+        n++;
+        if (nb.part !== c.part) touchesOther = true;
+      }
     }
     if (n < 4 && c.nx > 0.15) c.color = lighten(c.color, 0.14);
+    if (touchesOther) c.color = darken(c.color, 0.1);
+  }
+}
+
+/**
+ * Soft AO on body cells near face features so mouth/eyes don't erase volume.
+ * Call after applyFeatures — only darkens body, never face parts.
+ */
+export function applyFaceAmbientOcclusion(grid: MonsterGrid): void {
+  const face = [...grid.cells.values()].filter(
+    (c) =>
+      c.part === 'eye' ||
+      c.part === 'pupil' ||
+      c.part === 'mouth' ||
+      c.part === 'tooth' ||
+      c.part === 'nose' ||
+      (c.part === 'outline' && c.mouthRole),
+  );
+  if (face.length === 0) return;
+  const faceKeys = new Set(face.map((c) => cellKey(c.col, c.row)));
+  for (const c of grid.cells.values()) {
+    if (c.part !== 'body') continue;
+    let near = 0;
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [-1, 1],
+      [1, -1],
+      [-1, -1],
+    ] as const) {
+      if (faceKeys.has(cellKey(c.col + dc, c.row + dr))) near++;
+    }
+    if (near >= 2) c.color = darken(c.color, 0.08 + near * 0.02);
   }
 }
 

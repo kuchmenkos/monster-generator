@@ -117,6 +117,20 @@ export function scoreMonster(data: MonsterData): number {
   else score += 6;
   if (mouths.some((p) => p.mouthRole === 'cavity')) score += 4;
 
+  // Soft: readable lips (upper + lower) and not a giant rest cavity
+  const upperLips = mouths.filter((p) => p.mouthRole === 'upper');
+  const lowerLips = mouths.filter((p) => p.mouthRole === 'lower');
+  const cavity = mouths.filter((p) => p.mouthRole === 'cavity');
+  if (upperLips.length > 0 && lowerLips.length > 0) score += 6;
+  const lipCount = upperLips.length + lowerLips.length;
+  if (lipCount > 0 && cavity.length <= lipCount * 2.2) score += 3;
+  if (data.mouthRest === 'sealed' || data.mouthRest === 'grin') score += 2;
+
+  // Soft: nose / richer eyes (iris or catchlight → multiple eye tones)
+  if (data.particles.some((p) => p.part === 'nose')) score += 4;
+  const eyeTones = new Set(eyes.map((e) => e.color));
+  if (eyeTones.size >= 2) score += 3;
+
   // Pupil within range metadata
   for (const pu of pupils) {
     if (pu.pupilRange && pu.pupilRange.x > 0) score += 1;
@@ -149,7 +163,8 @@ export function scoreMonster(data: MonsterData): number {
 
   // Coat richness — cel-shading + patterns should yield several tones
   const tones = uniqueBodyColors(data.particles);
-  if (tones >= 4) score += 10;
+  if (tones >= 5) score += 14;
+  else if (tones >= 4) score += 10;
   else if (tones >= 3) score += 6;
   else if (tones <= 1) score -= 12;
 

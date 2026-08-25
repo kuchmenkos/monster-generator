@@ -431,14 +431,33 @@ export class MonsterView extends ParticleContainer {
 
       y += this.bounceActive * (1 - Math.abs(home.x) * 0.3);
 
+      // Talk opens from rest: sealed → lips part; grin → small pulse; open → moderated pump
       const role = home.mouthRole;
       let cavityStretch = 1;
+      const rest = this.data.mouthRest ?? 'sealed';
       if (jawAmt > 0 && role) {
-        if (role === 'lower' || role === 'tongue') {
-          y -= jawAmt;
-        } else if (role === 'cavity') {
-          cavityStretch = 1 + jaw * anim.talkAmp * 0.5;
-          y -= jawAmt * 0.5;
+        if (rest === 'sealed') {
+          if (role === 'lower' || role === 'tongue') y -= jawAmt;
+          else if (role === 'upper') y -= jawAmt * 0.15;
+          else if (role === 'cavity') {
+            cavityStretch = 1 + jaw * anim.talkAmp * 0.7;
+            y -= jawAmt * 0.45;
+          }
+        } else if (rest === 'grin') {
+          if (role === 'lower' || role === 'tongue') y -= jawAmt * 0.55;
+          else if (role === 'upper') y -= jawAmt * 0.08;
+          else if (role === 'cavity') {
+            cavityStretch = 1 + jaw * anim.talkAmp * 0.4;
+            y -= jawAmt * 0.28;
+          }
+        } else {
+          // open rest: avoid double-scream — softer jaw pump, upper almost still
+          const openMul = 0.55;
+          if (role === 'lower' || role === 'tongue') y -= jawAmt * openMul;
+          else if (role === 'cavity') {
+            cavityStretch = 1 + jaw * anim.talkAmp * 0.28;
+            y -= jawAmt * 0.35 * openMul;
+          }
         }
       }
 
@@ -460,7 +479,7 @@ export class MonsterView extends ParticleContainer {
       }
 
       sprite.x = x * scale;
-      sprite.y = -y * scale - home.z * scale * 0.03;
+      sprite.y = -y * scale - home.z * scale * 0.05;
 
       let sizeMul = home.size;
       let scaleYMul = 1;
