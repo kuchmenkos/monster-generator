@@ -368,9 +368,11 @@ export class MonsterView extends ParticleContainer {
     const jaw = this.updateTalk(dt);
     // Scale talk amp by scaleRef so finer grids still open visibly
     const sr = this.data.scaleRef || 1;
-    const jawRaw = jaw * anim.talkAmp * cell * Math.max(1, sr * 0.45);
-    const half = cell * 0.5;
-    const jawAmt = half > 0 ? Math.round(jawRaw / half) * half : jawRaw;
+    const jawRaw = jaw * anim.talkAmp * cell * Math.max(1.15, sr * 0.55);
+    // Quarter-cell snap; keep true zero when jaw is closed
+    const quant = cell * 0.25;
+    const jawAmt =
+      jaw <= 0 || quant <= 0 ? 0 : Math.max(quant, Math.round(jawRaw / quant) * quant);
 
     // Body squash in talk rhythm + stronger nod
     let talkSquash = 0;
@@ -437,18 +439,20 @@ export class MonsterView extends ParticleContainer {
       const rest = this.data.mouthRest ?? 'sealed';
       if (jawAmt > 0 && role) {
         if (rest === 'sealed') {
-          if (role === 'lower' || role === 'tongue') y -= jawAmt;
-          else if (role === 'upper') y -= jawAmt * 0.15;
+          // Clear lip separation in cell units so talk reads on sealed lines
+          const openCells = Math.max(1.2, (jawAmt / Math.max(1e-6, cell)) * 1.35);
+          if (role === 'lower' || role === 'tongue') y -= jawAmt * 1.25;
+          else if (role === 'upper') y += jawAmt * 0.35;
           else if (role === 'cavity') {
-            cavityStretch = 1 + jaw * anim.talkAmp * 0.7;
+            cavityStretch = 1 + openCells;
             y -= jawAmt * 0.45;
           }
         } else if (rest === 'grin') {
-          if (role === 'lower' || role === 'tongue') y -= jawAmt * 0.55;
-          else if (role === 'upper') y -= jawAmt * 0.08;
+          if (role === 'lower' || role === 'tongue') y -= jawAmt * 0.75;
+          else if (role === 'upper') y += jawAmt * 0.15;
           else if (role === 'cavity') {
-            cavityStretch = 1 + jaw * anim.talkAmp * 0.4;
-            y -= jawAmt * 0.28;
+            cavityStretch = 1 + jaw * Math.max(0.8, anim.talkAmp * 0.5);
+            y -= jawAmt * 0.3;
           }
         } else {
           // open rest: avoid double-scream — softer jaw pump, upper almost still
