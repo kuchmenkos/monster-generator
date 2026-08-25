@@ -3,13 +3,13 @@ import { createBlobs } from './field';
 import { applyLimbs } from './limbs';
 import { generateMonsterName } from './names';
 import { generatePalette } from './palette';
-import { applyPatterns } from './patterns';
+import { applyFaceAmbientOcclusion, applyPatterns } from './patterns';
 import { applyGroundShadow, gridToParticles, rasterizeField } from './particles';
 import { createRng } from './rng';
 import { scoreMonster } from './score';
 import type { AnimParams, MonsterData, Particle } from './types';
 
-const CANDIDATE_COUNT = 6;
+const CANDIDATE_COUNT = 12;
 
 function computeBounds(particles: Particle[]) {
   let minX = Infinity;
@@ -73,7 +73,8 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
   applyLimbs(rng, grid, palette, archetype);
   applyGroundShadow(grid);
   applyPatterns(rng, grid, palette);
-  applyFeatures(rng, grid, palette, archetype);
+  const mouthRest = applyFeatures(rng, grid, palette, archetype);
+  applyFaceAmbientOcclusion(grid);
 
   const particles = gridToParticles(grid);
 
@@ -92,6 +93,7 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
     particles,
     palette,
     anim: makeAnim(rng),
+    mouthRest,
     cellSize: grid.cell,
     scaleRef: grid.scaleRef,
     bounds: computeBounds(particles),

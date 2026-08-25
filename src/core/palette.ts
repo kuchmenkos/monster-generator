@@ -82,8 +82,9 @@ export function generatePalette(rng: Rng): MonsterPalette {
   const accent2Hue = hue + rng.pick([60, 90, 180, 210, 270]) + rng.float(-15, 15);
   const accent2 = hslToRgb(accent2Hue, rng.float(0.55, 0.95), rng.float(0.4, 0.7));
   const mouth = hslToRgb(rng.float(350, 380), rng.float(0.55, 0.85), rng.float(0.22, 0.38));
+  const lip = lighten(mouth, rng.float(0.12, 0.28));
   const eyeWhite = hslToRgb(rng.float(40, 70), rng.float(0.05, 0.2), rng.float(0.88, 0.97));
   const pupil = hslToRgb(rng.float(200, 260), rng.float(0.1, 0.4), rng.float(0.05, 0.18));
 
-  return { base, highlight, shadow, outline, accent, accent2, mouth, eyeWhite, pupil };
+  return { base, highlight, shadow, outline, accent, accent2, mouth, lip, eyeWhite, pupil };
 }

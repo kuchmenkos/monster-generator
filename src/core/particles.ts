@@ -604,16 +604,19 @@ export function applyGroundShadow(grid: MonsterGrid): void {
   const minC = Math.min(...solid.map((c) => c.col));
   const maxC = Math.max(...solid.map((c) => c.col));
   const midC = Math.round((minC + maxC) / 2);
-  const halfW = Math.max(3, Math.floor((maxC - minC) * 0.38));
+  // Slightly wider / softer contact shadow
+  const halfW = Math.max(4, Math.floor((maxC - minC) * 0.48));
   const sample = solid.find((c) => c.row === minR) ?? solid[0]!;
   for (let dx = -halfW; dx <= halfW; dx++) {
     const t = dx / Math.max(1, halfW);
-    const h = Math.max(2, Math.round((1 - t * t) * 2.4));
+    const h = Math.max(2, Math.round((1 - t * t) * 3.2));
     for (let dy = 1; dy <= h; dy++) {
       const col = midC + dx;
       const row = minR - dy;
       const key = cellKey(col, row);
       if (grid.cells.has(key)) continue;
+      // Outer rings slightly lighter so shadow reads soft, not a hard oval
+      const edge = Math.abs(t) > 0.7 || dy === h;
       grid.cells.set(key, {
         col,
         row,
@@ -623,10 +626,10 @@ export function applyGroundShadow(grid: MonsterGrid): void {
         nx: 0,
         ny: -1,
         nz: 0.2,
-        color: 0x2a2240,
+        color: edge ? 0x3a3252 : 0x2a2240,
         part: 'aura',
         phase: 0,
-        size: 1.15,
+        size: edge ? 1.05 : 1.2,
         tipFactor: 0,
       });
     }
