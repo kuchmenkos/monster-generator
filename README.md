@@ -19,6 +19,16 @@ npm run dev
 - Жива idle-анімація: дихання, погойдування, джиґл, моргання, підстрибування
 - Галерея з cull'інгом, детальний вигляд, `?seed=` у URL, експорт PNG
 
+## Голос монстра (dev)
+
+Превʼю 3 унікальних голосів через ElevenLabs Voice Design:
+
+1. Скопіюй `.env.example` → `.env.local`
+2. Додай `ELEVENLABS_API_KEY=...`
+3. `npm run dev` → відкрий монстра → **Згенерувати голоси** → прослухай ▶ 1/2/3
+
+Працює лише в dev (`/__voice/design` middleware). Без ключа — toast з підказкою.
+
 ## Стек
 
 TypeScript · Vite · PixiJS 8 (`ParticleContainer` для батченого рендеру частинок)

@@ -10,8 +10,16 @@ import {
   toggleFavorite,
 } from './app/feedback';
 import { Gallery } from './app/gallery';
-import { createUi, type GalleryTab } from './app/ui';
+import { createUi, type GalleryTab, type VoicePanelState } from './app/ui';
 import { generateMonster } from './core/monster';
+import {
+  generateVoices,
+  getCachedPreviews,
+  getSelectedIndex,
+  playPreview,
+  setSelectedIndex,
+  stopPreview,
+} from './app/voice';
 import { MonsterView } from './render/MonsterView';
 
 type Mode = 'gallery' | 'detail';
@@ -50,6 +58,25 @@ async function main() {
   let galleryTab: GalleryTab = 'all';
   let navSeeds: string[] = [];
   let currentName = '';
+  let playingVoiceIndex: number | null = null;
+
+  const refreshVoicePanel = (seed: string) => {
+    const cached = getCachedPreviews(seed);
+    const selected = getSelectedIndex(seed);
+    const state: VoicePanelState = {
+      visible: true,
+      loading: false,
+      previews: cached?.previews.map((p) => ({ index: p.index })) ?? null,
+      selectedIndex: selected,
+      playingIndex: playingVoiceIndex,
+    };
+    ui.setVoicePanel(state);
+  };
+
+  const stopVoicePlayback = () => {
+    stopPreview();
+    playingVoiceIndex = null;
+  };
 
   const cols = Math.max(3, Math.min(8, Math.floor(window.innerWidth / 150)));
   const rows = Math.max(2, Math.ceil(12 / cols));
@@ -65,6 +92,7 @@ async function main() {
 
   const showGallery = () => {
     mode = 'gallery';
+    stopVoicePlayback();
     detail.visible = false;
     detail.clear();
     gallery.visible = true;
@@ -82,6 +110,7 @@ async function main() {
     navSeeds = seedsContext;
     writeSeedToUrl(seed);
     ui.setMode('detail', { seed, name: data.name });
+    refreshVoicePanel(seed);
     layout();
   };
 
@@ -204,6 +233,70 @@ async function main() {
     onPrev: () => navigate(-1),
     onNext: () => navigate(1),
     onTab: (tab) => switchTab(tab),
+    onGenerateVoices: async () => {
+      const seed = detail.seed;
+      if (!seed) return;
+      stopVoicePlayback();
+      ui.setVoicePanel({
+        visible: true,
+        loading: true,
+        previews: getCachedPreviews(seed)?.previews.map((p) => ({ index: p.index })) ?? null,
+        selectedIndex: getSelectedIndex(seed),
+        playingIndex: null,
+      });
+      try {
+        const result = await generateVoices(seed);
+        ui.showToast('3 голоси готові');
+        ui.setVoicePanel({
+          visible: true,
+          loading: false,
+          previews: result.previews.map((p) => ({ index: p.index })),
+          selectedIndex: getSelectedIndex(seed),
+          playingIndex: null,
+        });
+      } catch (err) {
+        ui.setVoicePanel({
+          visible: true,
+          loading: false,
+          previews: getCachedPreviews(seed)?.previews.map((p) => ({ index: p.index })) ?? null,
+          selectedIndex: getSelectedIndex(seed),
+          playingIndex: null,
+        });
+        ui.showToast(err instanceof Error ? err.message : 'Помилка генерації голосів');
+      }
+    },
+    onPlayPreview: (index) => {
+      const seed = detail.seed;
+      if (!seed) return;
+      const cached = getCachedPreviews(seed);
+      const preview = cached?.previews.find((p) => p.index === index);
+      if (!preview) {
+        ui.showToast('Спочатку згенеруй голоси');
+        return;
+      }
+
+      if (playingVoiceIndex === index) {
+        stopVoicePlayback();
+        refreshVoicePanel(seed);
+        return;
+      }
+
+      stopVoicePlayback();
+      playingVoiceIndex = index;
+      refreshVoicePanel(seed);
+      playPreview(preview.audioBase64, () => {
+        playingVoiceIndex = null;
+        refreshVoicePanel(seed);
+      });
+    },
+    onSelectVoice: (index) => {
+      const seed = detail.seed;
+      if (!seed) return;
+      const current = getSelectedIndex(seed);
+      const next = current === index ? null : index;
+      setSelectedIndex(seed, next);
+      refreshVoicePanel(seed);
+    },
   });
 
   const layout = () => {
