@@ -7,6 +7,18 @@ import {
 
 export type GalleryTab = 'all' | 'favorites' | 'dislikes';
 
+export type VoicePanelPreview = {
+  index: number;
+};
+
+export type VoicePanelState = {
+  visible: boolean;
+  loading: boolean;
+  previews: VoicePanelPreview[] | null;
+  selectedIndex: number | null;
+  playingIndex: number | null;
+};
+
 export type UiCallbacks = {
   onAddMore: () => void;
   onBack: () => void;
@@ -17,6 +29,9 @@ export type UiCallbacks = {
   onPrev: () => void;
   onNext: () => void;
   onTab: (tab: GalleryTab) => void;
+  onGenerateVoices: () => void;
+  onPlayPreview: (index: number) => void;
+  onSelectVoice: (index: number) => void;
 };
 
 /**
@@ -115,6 +130,118 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     display: 'none',
   } as CSSStyleDeclaration);
   root.appendChild(nameLabel);
+
+  // Voice preview panel (detail mode only)
+  const voicePanel = document.createElement('div');
+  Object.assign(voicePanel.style, {
+    position: 'absolute',
+    bottom: '16px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'none',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '10px',
+    zIndex: '14',
+    pointerEvents: 'none',
+    padding: '12px 16px',
+    borderRadius: '12px',
+    border: '1px solid rgba(255,255,255,0.12)',
+    background: 'rgba(12,12,18,0.88)',
+    backdropFilter: 'blur(10px)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+    minWidth: '220px',
+  } as CSSStyleDeclaration);
+  root.appendChild(voicePanel);
+
+  const voiceGenerateBtn = makeBtn('🎙 Згенерувати голоси', () => callbacks.onGenerateVoices());
+  voiceGenerateBtn.style.pointerEvents = 'auto';
+  voiceGenerateBtn.style.width = '100%';
+  voicePanel.appendChild(voiceGenerateBtn);
+
+  const previewRow = document.createElement('div');
+  Object.assign(previewRow.style, {
+    display: 'none',
+    gap: '8px',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    pointerEvents: 'auto',
+  } as CSSStyleDeclaration);
+  voicePanel.appendChild(previewRow);
+
+  const previewSlots: Array<{
+    wrap: HTMLDivElement;
+    playBtn: HTMLButtonElement;
+    selectBtn: HTMLButtonElement;
+  }> = [];
+
+  for (let i = 0; i < 3; i++) {
+    const wrap = document.createElement('div');
+    Object.assign(wrap.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px',
+    } as CSSStyleDeclaration);
+
+    const playBtn = makeBtn(`▶ ${i + 1}`, () => callbacks.onPlayPreview(i));
+    playBtn.style.padding = '6px 10px';
+    playBtn.style.fontSize = '12px';
+    playBtn.style.minWidth = '44px';
+
+    const selectBtn = document.createElement('button');
+    selectBtn.textContent = '○';
+    selectBtn.title = 'Обраний голос';
+    Object.assign(selectBtn.style, {
+      pointerEvents: 'auto',
+      border: '1px solid rgba(255,255,255,0.18)',
+      background: 'rgba(20,20,28,0.85)',
+      color: 'rgba(255,255,255,0.5)',
+      padding: '4px 8px',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '12px',
+      fontWeight: '600',
+      lineHeight: '1',
+    } as CSSStyleDeclaration);
+    selectBtn.addEventListener('click', () => callbacks.onSelectVoice(i));
+
+    wrap.append(playBtn, selectBtn);
+    previewRow.appendChild(wrap);
+    previewSlots.push({ wrap, playBtn, selectBtn });
+  }
+
+  const setVoicePanel = (state: VoicePanelState) => {
+    voicePanel.style.display = state.visible ? 'flex' : 'none';
+    voiceGenerateBtn.disabled = state.loading;
+    voiceGenerateBtn.style.opacity = state.loading ? '0.55' : '1';
+    voiceGenerateBtn.style.cursor = state.loading ? 'wait' : 'pointer';
+    voiceGenerateBtn.textContent = state.loading ? 'Генерую…' : '🎙 Згенерувати голоси';
+
+    const hasPreviews = !!state.previews && state.previews.length > 0;
+    previewRow.style.display = hasPreviews ? 'flex' : 'none';
+
+    previewSlots.forEach((slot, i) => {
+      const active = hasPreviews && state.previews!.some((p) => p.index === i);
+      slot.wrap.style.display = active ? 'flex' : 'none';
+
+      const playing = state.playingIndex === i;
+      slot.playBtn.textContent = playing ? `⏸ ${i + 1}` : `▶ ${i + 1}`;
+      slot.playBtn.style.borderColor = playing
+        ? 'rgba(120,200,255,0.65)'
+        : 'rgba(255,255,255,0.18)';
+      slot.playBtn.style.background = playing
+        ? 'rgba(40,70,100,0.95)'
+        : 'rgba(20,20,28,0.85)';
+
+      const selected = state.selectedIndex === i;
+      slot.selectBtn.textContent = selected ? '✓' : '○';
+      slot.selectBtn.style.color = selected ? '#7dffb3' : 'rgba(255,255,255,0.45)';
+      slot.selectBtn.style.borderColor = selected
+        ? 'rgba(125,255,179,0.45)'
+        : 'rgba(255,255,255,0.18)';
+    });
+  };
 
   // Speech bubble
   const bubble = document.createElement('div');
@@ -259,7 +386,16 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     nameLabel.textContent = opts.name ?? '';
     emptyHint.style.display = !isDetail && opts.emptyHint ? 'block' : 'none';
     emptyHint.textContent = opts.emptyHint ?? '';
-    if (!isDetail) hideSpeech();
+    if (!isDetail) {
+      hideSpeech();
+      setVoicePanel({
+        visible: false,
+        loading: false,
+        previews: null,
+        selectedIndex: null,
+        playingIndex: null,
+      });
+    }
 
     if (isDetail) {
       seedLabel.textContent = opts.seed
@@ -285,6 +421,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     showToast,
     showSpeech,
     hideSpeech,
+    setVoicePanel,
     bar,
     nameLabel,
   };
