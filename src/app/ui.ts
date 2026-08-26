@@ -88,6 +88,8 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
   const dislikeBtn = makeBtn('👎', callbacks.onToggleDislike);
   const copyBtn = makeBtn('Копіювати лінк', callbacks.onCopyLink);
   const exportBtn = makeBtn('PNG', callbacks.onExportPng);
+  const voiceBarBtn = makeBtn('🎙 Голоси', () => callbacks.onGenerateVoices());
+  voiceBarBtn.style.display = 'none';
 
   const seedLabel = document.createElement('span');
   Object.assign(seedLabel.style, {
@@ -108,6 +110,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     dislikeBtn,
     copyBtn,
     exportBtn,
+    voiceBarBtn,
     seedLabel,
   );
   root.appendChild(bar);
@@ -135,26 +138,40 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
   const voicePanel = document.createElement('div');
   Object.assign(voicePanel.style, {
     position: 'absolute',
-    bottom: '16px',
-    left: '50%',
-    transform: 'translateX(-50%)',
+    right: '72px',
+    top: '50%',
+    transform: 'translateY(-50%)',
     display: 'none',
     flexDirection: 'column',
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: '10px',
-    zIndex: '14',
+    zIndex: '16',
     pointerEvents: 'none',
-    padding: '12px 16px',
+    padding: '12px 14px',
     borderRadius: '12px',
-    border: '1px solid rgba(255,255,255,0.12)',
-    background: 'rgba(12,12,18,0.88)',
+    border: '1px solid rgba(255,255,255,0.14)',
+    background: 'rgba(12,12,18,0.92)',
     backdropFilter: 'blur(10px)',
-    boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
-    minWidth: '220px',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+    minWidth: '200px',
+    maxWidth: 'min(240px, 42vw)',
   } as CSSStyleDeclaration);
   root.appendChild(voicePanel);
 
-  const voiceGenerateBtn = makeBtn('🎙 Згенерувати голоси', () => callbacks.onGenerateVoices());
+  const voicePanelTitle = document.createElement('div');
+  voicePanelTitle.textContent = 'Голоси монстра';
+  Object.assign(voicePanelTitle.style, {
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.45)',
+    textAlign: 'center',
+    pointerEvents: 'none',
+  } as CSSStyleDeclaration);
+  voicePanel.appendChild(voicePanelTitle);
+
+  const voiceGenerateBtn = makeBtn('🎙 Згенерувати', () => callbacks.onGenerateVoices());
   voiceGenerateBtn.style.pointerEvents = 'auto';
   voiceGenerateBtn.style.width = '100%';
   voicePanel.appendChild(voiceGenerateBtn);
@@ -213,10 +230,14 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
 
   const setVoicePanel = (state: VoicePanelState) => {
     voicePanel.style.display = state.visible ? 'flex' : 'none';
+    voiceBarBtn.style.display = state.visible ? 'inline-block' : 'none';
     voiceGenerateBtn.disabled = state.loading;
     voiceGenerateBtn.style.opacity = state.loading ? '0.55' : '1';
     voiceGenerateBtn.style.cursor = state.loading ? 'wait' : 'pointer';
-    voiceGenerateBtn.textContent = state.loading ? 'Генерую…' : '🎙 Згенерувати голоси';
+    voiceGenerateBtn.textContent = state.loading ? 'Генерую…' : '🎙 Згенерувати';
+    voiceBarBtn.disabled = state.loading;
+    voiceBarBtn.style.opacity = state.loading ? '0.55' : '1';
+    voiceBarBtn.textContent = state.loading ? 'Генерую…' : '🎙 Голоси';
 
     const hasPreviews = !!state.previews && state.previews.length > 0;
     previewRow.style.display = hasPreviews ? 'flex' : 'none';
@@ -380,6 +401,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     dislikeBtn.style.display = isDetail ? 'inline-block' : 'none';
     copyBtn.style.display = isDetail ? 'inline-block' : 'none';
     exportBtn.style.display = isDetail ? 'inline-block' : 'none';
+    voiceBarBtn.style.display = isDetail ? 'inline-block' : 'none';
     prevBtn.style.display = isDetail ? 'block' : 'none';
     nextBtn.style.display = isDetail ? 'block' : 'none';
     nameLabel.style.display = isDetail ? 'block' : 'none';
@@ -399,10 +421,17 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
 
     if (isDetail) {
       seedLabel.textContent = opts.seed
-        ? `seed: ${opts.seed} · клік = говорити`
+        ? `seed: ${opts.seed} · клік = говорити · 🎙 голоси справа`
         : '';
       setLiked(opts.seed ? hasFavorite(opts.seed) : false);
       setDisliked(opts.seed ? hasDislike(opts.seed) : false);
+      setVoicePanel({
+        visible: true,
+        loading: false,
+        previews: null,
+        selectedIndex: null,
+        playingIndex: null,
+      });
     } else {
       seedLabel.textContent = 'клік · скрол · ←→ · ♥/👎';
       if (opts.tab) setTab(opts.tab);
