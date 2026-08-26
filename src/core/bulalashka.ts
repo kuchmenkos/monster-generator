@@ -133,9 +133,9 @@ export function createProceduralBulalashka(rng: Rng): BulalashkaBlobSet {
   const buttArchetype = rng.pick(BUTT_ARCHETYPES);
   const blobs: Blob[] = [];
 
-  const spineCount = rng.int(12, 20);
+  const spineCount = rng.int(8, 14);
   const frontAnchor = { x: rng.float(-0.06, 0.06), y: rng.float(0.12, 0.32), z: rng.float(0.28, 0.48) };
-  const backAnchor = { x: rng.float(-0.05, 0.05), y: rng.float(-0.42, -0.22), z: rng.float(-0.48, -0.28) };
+  const backAnchor = { x: rng.float(-0.05, 0.05), y: rng.float(-0.38, -0.24), z: rng.float(-0.38, -0.26) };
   const amp = rng.float(0.12, 0.28);
   const baseR = rng.float(0.32, 0.48);
 
@@ -175,34 +175,33 @@ export function createProceduralBulalashka(rng: Rng): BulalashkaBlobSet {
   }
 
   // Butt shelf — protrudes on -Z
-  const shelfCount = rng.int(2, 4);
+  const shelfCount = rng.int(2, 3);
   for (let s = 0; s < shelfCount; s++) {
     blobs.push(
       bodyBlob(
         rng.float(-0.08, 0.08),
-        rng.float(-0.48, -0.22),
-        -rng.float(0.35, 0.55),
-        rng.float(0.42, 0.62),
-        rng.float(0.36, 0.52),
-        rng.float(0.45, 0.65),
-        rng.float(1.2, 1.5),
+        rng.float(-0.42, -0.24),
+        -rng.float(0.28, 0.45),
+        rng.float(0.4, 0.55),
+        rng.float(0.34, 0.48),
+        rng.float(0.4, 0.55),
+        rng.float(1.0, 1.3),
       ),
     );
   }
 
-  // Asymmetric side wobbles (no mirrored appendages)
-  const wobbleCount = rng.int(1, 3);
+  const wobbleCount = rng.int(1, 2);
   for (let w = 0; w < wobbleCount; w++) {
     const side = rng.chance(0.5) ? -1 : 1;
     blobs.push(
       bodyBlob(
-        side * rng.float(0.22, 0.38),
-        rng.float(-0.2, 0.15),
-        rng.float(-0.12, 0.18),
-        rng.float(0.18, 0.32),
-        rng.float(0.22, 0.34),
-        rng.float(0.18, 0.3),
-        rng.float(0.6, 0.85),
+        side * rng.float(0.18, 0.3),
+        rng.float(-0.18, 0.12),
+        rng.float(-0.1, 0.14),
+        rng.float(0.16, 0.26),
+        rng.float(0.18, 0.28),
+        rng.float(0.16, 0.26),
+        rng.float(0.6, 0.8),
       ),
     );
   }

@@ -7,6 +7,13 @@ page.on('pageerror', (e) => errors.push(e.message));
 
 await page.goto('http://127.0.0.1:5173/', { waitUntil: 'networkidle', timeout: 60000 });
 await page.waitForTimeout(1500);
+
+const addBtn = page.getByRole('button', { name: '+1 монстр' });
+for (let i = 0; i < 6; i++) {
+  await addBtn.click();
+  await page.waitForTimeout(400);
+}
+await page.waitForTimeout(1200);
 await page.screenshot({ path: 'debug-butts-gallery.png' });
 
 const testSeeds = ['butt0', 'butt1', 'butt2', 'butt3', 'butt4', 'butt5', 'butt6', 'butt7', 'butt8', 'butt9'];

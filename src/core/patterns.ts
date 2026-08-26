@@ -1,7 +1,7 @@
 import { darken, lighten } from './palette';
+import { countSolidNeighbors } from './grid';
 import type { Rng } from './rng';
 import type { GridCell, MonsterGrid, MonsterPalette } from './types';
-import { cellKey } from './types';
 
 type PatternKind =
   | 'plain'
@@ -58,16 +58,7 @@ function applyCelShading(grid: MonsterGrid, palette: MonsterPalette): void {
   }
 
   for (const c of solid) {
-    let n = 0;
-    for (const [dc, dr] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const) {
-      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
-      if (nb && (nb.part === 'body' || nb.part === 'appendage')) n++;
-    }
+    const n = countSolidNeighbors(grid, c.col, c.row, c.facing);
     if (n < 4 && c.nx > 0.15) c.color = lighten(c.color, 0.14);
   }
 }
@@ -300,16 +291,7 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
   // Crisp outline on body silhouette only — limbs stay body-tinted so they read attached
   for (const c of grid.cells.values()) {
     if (c.part !== 'body') continue;
-    let neighbors = 0;
-    for (const [dc, dr] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const) {
-      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
-      if (nb && (nb.part === 'body' || nb.part === 'appendage')) neighbors++;
-    }
+    const neighbors = countSolidNeighbors(grid, c.col, c.row, c.facing);
     if (neighbors < 4) c.color = palette.outline;
   }
 }

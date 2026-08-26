@@ -68,8 +68,9 @@ export class Gallery extends Container {
     const view = new MonsterView({
       data,
       scale: this.cellSize * 0.4,
-      galleryYaw: 0.4,
-      galleryPitch: 0.15,
+      galleryYaw: 0.35,
+      galleryPitch: 0.12,
+      thumbnail: true,
     });
     this.placeView(view, index);
     view.on('pointertap', () => {

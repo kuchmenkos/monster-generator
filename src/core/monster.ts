@@ -4,7 +4,7 @@ import { applyFeatures } from './features';
 import { generateMonsterName } from './names';
 import { generatePalette } from './palette';
 import { applyPatterns } from './patterns';
-import { applyGroundShadow, gridToParticles, rasterizeVolumeShell } from './particles';
+import { applyGroundShadow, gridToParticles, rasterizeDenseShell } from './particles';
 import { createRng } from './rng';
 import { scoreBulalashka } from './score';
 import type { AnimParams, MonsterData, Particle } from './types';
@@ -52,19 +52,17 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
   const rng = createRng(variantSeed);
   const palette = generatePalette(rng);
   const { blobs, bodyArchetype, buttArchetype } = createProceduralBulalashka(rng);
-  const threshold = rng.float(0.95, 1.15);
+  const threshold = rng.float(1.0, 1.28);
 
-  let grid = rasterizeVolumeShell(rng, blobs, palette, {
-    resolution: rng.int(90, 110),
+  let grid = rasterizeDenseShell(rng, blobs, palette, {
+    resolution: rng.int(72, 88),
     threshold,
-    targetParticles: rng.int(1200, 1800),
   });
 
-  if (grid.cells.size < 400) {
-    grid = rasterizeVolumeShell(rng, blobs, palette, {
-      resolution: 100,
-      threshold: 0.88,
-      targetParticles: 2000,
+  if (grid.cells.size < 350) {
+    grid = rasterizeDenseShell(rng, blobs, palette, {
+      resolution: 80,
+      threshold: 0.95,
     });
   }
 

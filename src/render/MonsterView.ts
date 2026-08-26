@@ -38,13 +38,19 @@ export interface MonsterViewOptions {
   galleryYaw?: number;
   /** Fixed pitch for gallery thumbnails (~9°). */
   galleryPitch?: number;
+  /** Thumbnail/gallery mode — softer shadow, larger pixels. */
+  thumbnail?: boolean;
   /** Enable drag-to-rotate in detail view. */
   allowRotate?: boolean;
 }
 
 const PERSPECTIVE_K = 0.38;
-const DEFAULT_GALLERY_YAW = 0.4;
-const DEFAULT_GALLERY_PITCH = 0.15;
+const DEFAULT_GALLERY_YAW = 0.35;
+const DEFAULT_GALLERY_PITCH = 0.12;
+
+function isShellPart(part: ParticlePart): boolean {
+  return part === 'body' || part === 'butt' || part === 'appendage';
+}
 
 /**
  * 3D bulalashka particle cloud with Y-axis rotation and perspective projection.
@@ -69,6 +75,7 @@ export class MonsterView extends ParticleContainer {
   private idleWobbleYaw = 0;
   private idleWobblePitch = 0;
   private readonly allowRotate: boolean;
+  private readonly thumbnail: boolean;
 
   // Personality-driven animation state
   private nextGlanceAt: number;
@@ -110,12 +117,15 @@ export class MonsterView extends ParticleContainer {
 
     this.data = options.data;
     this.displayScale = options.scale ?? 40;
-    this.cellPx = Math.max(2, options.data.cellSize * this.displayScale * 1.18);
     this.baseYaw = options.galleryYaw ?? DEFAULT_GALLERY_YAW;
     this.basePitch = options.galleryPitch ?? DEFAULT_GALLERY_PITCH;
     this.allowRotate = options.allowRotate ?? false;
+    this.thumbnail = options.thumbnail ?? !this.allowRotate;
     this.eventMode = 'static';
     this.cursor = this.allowRotate ? 'grab' : 'pointer';
+
+    const pxMul = this.thumbnail ? 1.28 : 1.18;
+    this.cellPx = Math.max(2, options.data.cellSize * this.displayScale * pxMul);
 
     const tex = getParticleTexture();
     for (const p of options.data.particles) {
@@ -265,7 +275,8 @@ export class MonsterView extends ParticleContainer {
 
   setDisplayScale(scale: number): void {
     this.displayScale = scale;
-    this.cellPx = Math.max(2, this.data.cellSize * scale * 1.18);
+    const pxMul = this.thumbnail ? 1.28 : 1.18;
+    this.cellPx = Math.max(2, this.data.cellSize * scale * pxMul);
     this.refreshBounds();
     this.updateHitArea();
   }
@@ -413,11 +424,25 @@ export class MonsterView extends ParticleContainer {
     this.scale.set(this.containerScaleX, this.containerScaleY);
     this.rotation = this.glanceDir * g * (0.04 + curiosity * 0.02);
 
+    interface FrameState {
+      lp: LiveParticle;
+      sx: number;
+      sy: number;
+      sortZ: number;
+      sizeMul: number;
+      scaleYMul: number;
+      alpha: number;
+    }
+
+    const frames: FrameState[] = [];
+    const binSize = Math.max(3, this.cellPx * 0.85);
+    const zWinners = new Map<string, number>();
+
     for (const lp of this.live) {
-      const { home, sprite, part } = lp;
+      const { home, part } = lp;
       let x = home.x;
       let y = home.y;
-      let z = home.z;
+      const z = home.z;
 
       x *= 1 + breath * 0.45;
       y *= 1 - breath;
@@ -475,9 +500,8 @@ export class MonsterView extends ParticleContainer {
 
       const proj = this.project(x, y, z, yaw, pitch);
       lp.sortZ = proj.rz;
-
-      sprite.x = proj.px * scale;
-      sprite.y = proj.py * scale;
+      const sx = proj.px * scale;
+      const sy = proj.py * scale;
 
       let sizeMul = home.size * proj.depth;
       let scaleYMul = 1;
@@ -485,28 +509,47 @@ export class MonsterView extends ParticleContainer {
         scaleYMul = Math.max(0.12, 1 - blink);
       }
 
-      // Backface cull via rotated surface normal vs view direction (+Z)
-      const rn = this.rotatePoint(home.nx, home.ny, home.nz, yaw, pitch);
-      const vis = rn.z;
       let alpha = 1;
       if (part === 'fleck') alpha = 0.85;
-      else if (part === 'aura') alpha = 0.55;
+      else if (part === 'aura') alpha = this.thumbnail ? 0.35 : 0.55;
+      else if (isShellPart(part)) alpha = 1;
+      else if (part === 'butt_highlight' || part === 'tail') {
+        const rn = this.rotatePoint(home.nx, home.ny, home.nz, yaw, pitch);
+        const vis = rn.z;
+        alpha = vis < -0.1 ? 0.4 : Math.max(0.55, Math.min(1, 0.45 + vis * 0.55));
+      }
+
       if (home.glow) {
         const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(t * 3.4 + home.phase));
         alpha = pulse;
         sizeMul *= 0.9 + 0.22 * pulse;
       }
-      if (vis < -0.1) {
-        alpha = 0;
-      } else {
-        alpha *= Math.max(0.35, Math.min(1, 0.4 + vis * 0.6));
+
+      frames.push({ lp, sx, sy, sortZ: proj.rz, sizeMul, scaleYMul, alpha });
+
+      if (isShellPart(part)) {
+        const key = `${Math.round(sx / binSize)},${Math.round(sy / binSize)}`;
+        const prev = zWinners.get(key);
+        if (prev === undefined || proj.rz > prev) zWinners.set(key, proj.rz);
+      }
+    }
+
+    for (const f of frames) {
+      const { lp, sx, sy, sortZ, sizeMul, scaleYMul } = f;
+      let alpha = f.alpha;
+      if (isShellPart(lp.part)) {
+        const key = `${Math.round(sx / binSize)},${Math.round(sy / binSize)}`;
+        const best = zWinners.get(key);
+        if (best !== undefined && sortZ < best - 0.002) alpha = 0;
       }
 
-      sprite.alpha = alpha;
+      lp.sprite.x = sx;
+      lp.sprite.y = sy;
+      lp.sprite.alpha = alpha;
 
       const px = Math.max(2, this.cellPx * sizeMul);
-      sprite.scaleX = px / 16;
-      sprite.scaleY = (px / 16) * scaleYMul;
+      lp.sprite.scaleX = px / 16;
+      lp.sprite.scaleY = (px / 16) * scaleYMul;
     }
 
     // Back-to-front draw order by projected depth

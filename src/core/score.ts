@@ -121,8 +121,9 @@ export function scoreBulalashka(data: MonsterData): number {
   const backBody = data.particles.filter(
     (p) => p.facing === 'back' && (p.part === 'body' || p.part === 'butt'),
   );
-  if (frontBody.length < 20) score -= 30;
-  else score += 8;
+  if (frontBody.length < 350) score -= 35;
+  else if (frontBody.length >= 400) score += 10;
+  else score += 4;
   if (backBody.length < 12) score -= 25;
   else score += 8;
 

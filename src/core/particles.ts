@@ -1,3 +1,4 @@
+import { countSolidNeighbors, deleteCell, setCell } from './grid';
 import { darken } from './palette';
 import { dominantKind, fieldNormal, sampleField } from './field';
 import type { Rng } from './rng';
@@ -23,25 +24,11 @@ function shadeColor(palette: MonsterPalette): number {
  * After fill: paint a dark 1-cell outline on silhouette rim for crisp edges.
  */
 function applySilhouetteOutline(grid: MonsterGrid, palette: MonsterPalette): void {
-  const rim: GridCell[] = [];
   for (const c of grid.cells.values()) {
     if (c.part !== 'body' && c.part !== 'appendage') continue;
-    let neighbors = 0;
-    for (const [dc, dr] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const) {
-      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
-      if (nb && (nb.part === 'body' || nb.part === 'appendage')) neighbors++;
+    if (countSolidNeighbors(grid, c.col, c.row, c.facing) < 4) {
+      c.color = palette.outline;
     }
-    if (neighbors < 4) {
-      rim.push(c);
-    }
-  }
-  for (const c of rim) {
-    c.color = palette.outline;
   }
 }
 
@@ -146,75 +133,70 @@ function mirrorSurfaceHalf(
   }
 }
 
-/** Fibonacci sphere unit directions. */
-function fibonacciDirections(count: number): { x: number; y: number; z: number }[] {
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  const dirs: { x: number; y: number; z: number }[] = [];
-  for (let i = 0; i < count; i++) {
-    const y = 1 - (i / Math.max(1, count - 1)) * 2;
-    const r = Math.sqrt(Math.max(0, 1 - y * y));
-    const theta = golden * i;
-    dirs.push({ x: Math.cos(theta) * r, y, z: Math.sin(theta) * r });
-  }
-  return dirs;
-}
-
-function facingFromNormal(nz: number): SurfaceFacing {
-  if (nz > 0.25) return 'front';
-  if (nz < -0.25) return 'back';
-  return 'side';
-}
-
-/** Laplacian-style smoothing on shell particles in 3D. */
-function smoothShell(cells: Map<string, GridCell>, passes = 2): void {
-  for (let pass = 0; pass < passes; pass++) {
-    const updates: GridCell[] = [];
-    for (const c of cells.values()) {
-      if (c.part !== 'body' && c.part !== 'appendage') continue;
-      let sx = 0;
-      let sy = 0;
-      let sz = 0;
+/** Morphological close on one facing layer. */
+function morphCloseLayer(
+  cells: Map<string, GridCell>,
+  facing: SurfaceFacing,
+  cols: number,
+  rows: number,
+  originX: number,
+  originY: number,
+  cell: number,
+  rng: Rng,
+): void {
+  const toFill: GridCell[] = [];
+  for (let row = 1; row < rows - 1; row++) {
+    for (let col = 1; col < cols - 1; col++) {
+      const key = surfaceCellKey(col, row, facing);
+      if (cells.has(key)) continue;
       let n = 0;
-      const mergeDist = 1.8;
-      for (const o of cells.values()) {
-        if (o === c) continue;
-        const d = Math.hypot(o.x - c.x, o.y - c.y, o.z - c.z);
-        if (d > mergeDist) continue;
-        sx += o.x;
-        sy += o.y;
-        sz += o.z;
-        n++;
+      let sample: GridCell | null = null;
+      for (const [dc, dr] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nb = cells.get(surfaceCellKey(col + dc, row + dr, facing));
+        if (nb) {
+          n++;
+          sample = nb;
+        }
       }
-      if (n < 2) continue;
-      const pull = 0.22;
-      updates.push({
-        ...c,
-        x: c.x + ((sx / n - c.x) * pull),
-        y: c.y + ((sy / n - c.y) * pull),
-        z: c.z + ((sz / n - c.z) * pull),
-      });
+      if (n >= 3 && sample) {
+        toFill.push({
+          ...sample,
+          col,
+          row,
+          x: originX + col * cell,
+          y: originY + row * cell,
+          z: sample.z - 0.01,
+          phase: rng.float(0, Math.PI * 2),
+          part: 'body',
+          tipFactor: 0,
+          facing,
+          color: darken(sample.color, 0.05),
+        });
+      }
     }
-    for (const u of updates) {
-      const key = u.facing
-        ? surfaceCellKey(u.col, u.row, u.facing)
-        : cellKey(u.col, u.row);
-      cells.set(key, u);
-    }
+  }
+  for (const f of toFill) {
+    cells.set(surfaceCellKey(f.col, f.row, facing), f);
   }
 }
 
 /**
- * 3D raycast shell — unique (x,y,z) particles, no dual-surface ring artifacts.
+ * Dense dual-surface shell — filled grid scan + morphological close.
+ * Ring overlap at rotation is handled in MonsterView z-buffer, not by sparsifying.
  */
-export function rasterizeVolumeShell(
+export function rasterizeDenseShell(
   rng: Rng,
   blobs: Blob[],
   palette: MonsterPalette,
   options: RasterOptions = {},
 ): MonsterGrid {
-  const threshold = options.threshold ?? rng.float(0.95, 1.15);
-  const targetParticles = options.targetParticles ?? rng.int(1200, 1800);
-  const rayCount = Math.min(1000, Math.max(550, Math.round(targetParticles * 0.45)));
+  const threshold = options.threshold ?? rng.float(1.0, 1.28);
+  const resolution = options.resolution ?? rng.int(72, 88);
 
   let minX = Infinity;
   let maxX = -Infinity;
@@ -223,106 +205,47 @@ export function rasterizeVolumeShell(
   let minZ = Infinity;
   let maxZ = -Infinity;
   for (const b of blobs) {
-    minX = Math.min(minX, b.x - b.rx * 1.3);
-    maxX = Math.max(maxX, b.x + b.rx * 1.3);
-    minY = Math.min(minY, b.y - b.ry * 1.3);
-    maxY = Math.max(maxY, b.y + b.ry * 1.3);
-    minZ = Math.min(minZ, b.z - b.rz * 1.3);
-    maxZ = Math.max(maxZ, b.z + b.rz * 1.3);
+    minX = Math.min(minX, b.x - b.rx * 1.25);
+    maxX = Math.max(maxX, b.x + b.rx * 1.25);
+    minY = Math.min(minY, b.y - b.ry * 1.25);
+    maxY = Math.max(maxY, b.y + b.ry * 1.25);
+    minZ = Math.min(minZ, b.z - b.rz * 1.25);
+    maxZ = Math.max(maxZ, b.z + b.rz * 1.25);
   }
 
-  const cx = (minX + maxX) * 0.5;
-  const cy = (minY + maxY) * 0.5;
-  const cz = (minZ + maxZ) * 0.5;
   const spanX = Math.max(0.5, maxX - minX);
   const spanY = Math.max(0.5, maxY - minY);
-  const resolution = options.resolution ?? rng.int(90, 110);
   const cell = Math.max(spanX, spanY) / resolution;
-  const cols = Math.ceil(spanX / cell) + 4;
-  const rows = Math.ceil(spanY / cell) + 4;
-  const originX = minX - cell * 2;
-  const originY = minY - cell * 2;
-  const maxDist =
-    Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) * 0.75 + 0.5;
-  const step = Math.max(0.045, maxDist / 36);
-
-  const hits: GridCell[] = [];
-  const dirs = fibonacciDirections(rayCount);
-
-  for (const dir of dirs) {
-    let hitX = 0;
-    let hitY = 0;
-    let hitZ = 0;
-    let found = false;
-
-    for (let t = maxDist; t >= 0; t -= step) {
-      const x = cx + dir.x * t;
-      const y = cy + dir.y * t;
-      const z = cz + dir.z * t;
-      if (sampleField(blobs, x, y, z) >= threshold) {
-        hitX = x;
-        hitY = y;
-        hitZ = z;
-        found = true;
-        break;
-      }
-    }
-    if (!found) continue;
-
-    const jitter = cell * 0.15;
-    const jx = hitX + rng.float(-jitter, jitter);
-    const jy = hitY + rng.float(-jitter, jitter);
-    const jz = hitZ + rng.float(-jitter, jitter);
-    const { nx, ny, nz } = fieldNormal(blobs, jx, jy, jz);
-    const facing = facingFromNormal(nz);
-    const kind = dominantKind(blobs, jx, jy, jz);
-    const col = Math.round((jx - originX) / cell);
-    const row = Math.round((jy - originY) / cell);
-
-    hits.push({
-      col,
-      row,
-      x: jx,
-      y: jy,
-      z: jz,
-      nx,
-      ny,
-      nz,
-      color: shadeColor(palette),
-      part: kind === 'appendage' ? 'appendage' : 'body',
-      phase: rng.float(0, Math.PI * 2),
-      size: 1,
-      tipFactor: 0,
-      facing,
-    });
-  }
-
-  // Deduplicate — merge points closer than 0.6 * cell
-  const mergeR = cell * 0.6;
-  const merged: GridCell[] = [];
-  for (const h of hits) {
-    let absorbed = false;
-    for (const m of merged) {
-      if (Math.hypot(h.x - m.x, h.y - m.y, h.z - m.z) < mergeR) {
-        absorbed = true;
-        break;
-      }
-    }
-    if (!absorbed) merged.push(h);
-  }
+  const cols = Math.ceil(spanX / cell) + 2;
+  const rows = Math.ceil(spanY / cell) + 2;
+  const originX = minX - cell;
+  const originY = minY - cell;
+  const zStep = Math.max(0.04, (maxZ - minZ) / 18);
 
   const cells = new Map<string, GridCell>();
-  for (const c of merged) {
-    const key = surfaceCellKey(c.col, c.row, c.facing ?? 'side');
-    if (cells.has(key)) {
-      const prev = cells.get(key)!;
-      if (c.z > prev.z) cells.set(key, c);
-    } else {
-      cells.set(key, c);
+  const midCol = Math.floor(cols / 2);
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col <= midCol; col++) {
+      const x = originX + col * cell;
+      const y = originY + row * cell;
+
+      const zFront = frontSurfaceZ(blobs, x, y, minZ, maxZ, threshold, zStep);
+      if (zFront !== null) {
+        storeSurfaceCell(cells, col, row, 'front', x, y, zFront, blobs, palette, rng);
+      }
+
+      const zBack = backSurfaceZ(blobs, x, y, minZ, maxZ, threshold, zStep);
+      if (zBack !== null && (zFront === null || zBack < zFront - zStep * 0.5)) {
+        storeSurfaceCell(cells, col, row, 'back', x, y, zBack, blobs, palette, rng);
+      }
     }
   }
 
-  smoothShell(cells, 1);
+  mirrorSurfaceHalf(cells, midCol, cols, originX, cell, 'front');
+  mirrorSurfaceHalf(cells, midCol, cols, originX, cell, 'back');
+  morphCloseLayer(cells, 'front', cols, rows, originX, originY, cell, rng);
+  morphCloseLayer(cells, 'back', cols, rows, originX, originY, cell, rng);
 
   const scaleRef = resolution / BASELINE_RESOLUTION;
   const grid: MonsterGrid = {
@@ -336,30 +259,28 @@ export function rasterizeVolumeShell(
     shearOriginRow: 0,
     cells,
   };
-
-  // Outline on shell values (surfaceCellKey — not legacy cellKey)
-  const rim: GridCell[] = [];
-  for (const c of cells.values()) {
-    if (c.part !== 'body' && c.part !== 'appendage') continue;
-    let neighbors = 0;
-    for (const o of cells.values()) {
-      if (o === c) continue;
-      if (Math.hypot(o.x - c.x, o.y - c.y) <= cell * 1.25) neighbors++;
-    }
-    if (neighbors < 4) rim.push(c);
-  }
-  for (const c of rim) {
-    c.color = palette.outline;
-    const key = surfaceCellKey(c.col, c.row, c.facing ?? 'side');
-    cells.set(key, c);
-  }
+  applyOrganicRim(rng, grid, palette);
+  applySilhouetteOutline(grid, palette);
+  applyFlecksAndDrips(rng, grid, palette);
 
   return grid;
 }
 
 /**
+ * @deprecated Sparse Fibonacci shell — use rasterizeDenseShell.
+ */
+export function rasterizeVolumeShell(
+  rng: Rng,
+  blobs: Blob[],
+  palette: MonsterPalette,
+  options: RasterOptions = {},
+): MonsterGrid {
+  return rasterizeDenseShell(rng, blobs, palette, options);
+}
+
+/**
  * Rasterize front AND back shells of the metaball field — bulalashka dual surface.
- * @deprecated Use rasterizeVolumeShell — dual col/row causes ring artifacts when rotated.
+ * @deprecated Use rasterizeDenseShell — ring artifacts fixed in render z-buffer.
  */
 export function rasterizeDualSurface(
   rng: Rng,
@@ -703,17 +624,7 @@ export function markRimFlags(grid: MonsterGrid): void {
       c.isRim = false;
       continue;
     }
-    let n = 0;
-    for (const [dc, dr] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const) {
-      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
-      if (nb && isSolidPart(nb.part)) n++;
-    }
-    c.isRim = n < 4;
+    c.isRim = countSolidNeighbors(grid, c.col, c.row, c.facing) < 4;
   }
 }
 
@@ -745,9 +656,9 @@ function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): 
     .sort((a, b) => b.wave - a.wave);
 
   for (let i = 0; i < erodeN && i < scored.length; i++) {
-    // Prefer high wave peaks for erosion — scalloped edge
     if (scored[i]!.wave < 0.15 && rng.chance(0.5)) continue;
-    grid.cells.delete(cellKey(scored[i]!.c.col, scored[i]!.c.row));
+    const cell = scored[i]!.c;
+    deleteCell(grid, cell.col, cell.row, cell.facing);
   }
 
   // Add 2–5 organic bumps on rim
@@ -755,15 +666,16 @@ function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): 
   const freshRim = rimCells(grid);
   for (let b = 0; b < bumpN && freshRim.length > 0; b++) {
     const anchor = freshRim[rng.int(0, freshRim.length - 1)]!;
+    const facing = anchor.facing ?? 'front';
     const size = rng.int(2, 5);
     const outC = Math.sign(anchor.col - cx) || (rng.chance(0.5) ? 1 : -1);
     const outR = Math.sign(anchor.row - cy) || 1;
     for (let k = 0; k < size; k++) {
       const col = anchor.col + outC * rng.int(0, 2) + rng.int(-1, 1);
       const row = anchor.row + outR * rng.int(0, 2) + rng.int(-1, 1);
-      const key = cellKey(col, row);
+      const key = surfaceCellKey(col, row, facing);
       if (grid.cells.has(key)) continue;
-      grid.cells.set(key, {
+      setCell(grid, {
         col,
         row,
         x: grid.originX + col * grid.cell,
@@ -771,12 +683,13 @@ function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): 
         z: anchor.z - 0.01,
         nx: outC * 0.3,
         ny: outR * 0.2,
-        nz: 0.9,
+        nz: facing === 'back' ? -0.9 : 0.9,
         color: palette.base,
         part: 'body',
         phase: rng.float(0, Math.PI * 2),
         size: 1,
         tipFactor: 0,
+        facing,
       });
     }
   }
@@ -786,17 +699,7 @@ function rimCells(grid: MonsterGrid): GridCell[] {
   const rim: GridCell[] = [];
   for (const c of grid.cells.values()) {
     if (!isSolidPart(c.part)) continue;
-    let n = 0;
-    for (const [dc, dr] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const) {
-      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
-      if (nb && isSolidPart(nb.part)) n++;
-    }
-    if (n < 4) rim.push(c);
+    if (countSolidNeighbors(grid, c.col, c.row, c.facing) < 4) rim.push(c);
   }
   return rim;
 }
