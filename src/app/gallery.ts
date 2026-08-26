@@ -37,11 +37,9 @@ export class Gallery extends Container {
     this.onSelect = options.onSelect ?? null;
     this.eventMode = 'static';
 
-    const initialCount = options.seeds?.length ?? Math.min(12, options.cols * options.rows);
-    const seeds =
-      options.seeds ?? Array.from({ length: initialCount }, () => randomSeed(8));
+    const seeds = options.seeds ?? [];
 
-    this.rebuild(seeds);
+    this.rebuild(seeds.length ? seeds : []);
   }
 
   get rows(): number {
@@ -67,7 +65,12 @@ export class Gallery extends Container {
 
   private createView(seed: string, index: number): MonsterView {
     const data = generateMonster(seed);
-    const view = new MonsterView({ data, scale: this.cellSize * 0.4 });
+    const view = new MonsterView({
+      data,
+      scale: this.cellSize * 0.4,
+      galleryYaw: 0.4,
+      galleryPitch: 0.15,
+    });
     this.placeView(view, index);
     view.on('pointertap', () => {
       this.onSelect?.(seed, data);
@@ -91,7 +94,7 @@ export class Gallery extends Container {
   }
 
   /** Append N new monsters without rebuilding existing ones. */
-  append(count = 4): void {
+  append(count = 1): void {
     const start = this.seeds.length;
     for (let i = 0; i < count; i++) {
       const seed = randomSeed(8);

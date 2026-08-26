@@ -67,7 +67,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
   const tabAll = makeBtn('Всі', () => callbacks.onTab('all'));
   const tabFav = makeBtn('♥ (0)', () => callbacks.onTab('favorites'));
   const tabDis = makeBtn('👎 (0)', () => callbacks.onTab('dislikes'));
-  const addMoreBtn = makeBtn('+4 монстри', callbacks.onAddMore);
+  const addMoreBtn = makeBtn('+1 монстр', callbacks.onAddMore);
   const backBtn = makeBtn('← Галерея', callbacks.onBack);
   const likeBtn = makeBtn('♡', callbacks.onToggleFavorite);
   const dislikeBtn = makeBtn('👎', callbacks.onToggleDislike);
@@ -232,7 +232,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
 
     if (isDetail) {
       seedLabel.textContent = opts.seed
-        ? `seed: ${opts.seed} · перетягни = обертання`
+        ? `seed: ${opts.seed} · перетягни = обертання (X/Y)`
         : '';
       setLiked(opts.seed ? hasFavorite(opts.seed) : false);
       setDisliked(opts.seed ? hasDislike(opts.seed) : false);

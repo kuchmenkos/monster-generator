@@ -132,6 +132,36 @@ export function scoreBulalashka(data: MonsterData): number {
   if (buttCells.length < 4) score -= 35;
   else score += Math.min(14, buttCells.length * 0.4);
 
+  // Shell density — volume rasterizer should yield plump organic clouds
+  const shellBody = data.particles.filter((p) => p.part === 'body' || p.part === 'butt');
+  if (shellBody.length < 500) score -= 20;
+  else if (shellBody.length >= 900) score += 8;
+
+  // Ring artifact detector — penalize many particles stacked on same col/row
+  const stackMap = new Map<string, number>();
+  for (const p of shellBody) {
+    const k = `${p.col},${p.row}`;
+    stackMap.set(k, (stackMap.get(k) ?? 0) + 1);
+  }
+  let stackHits = 0;
+  for (const n of stackMap.values()) {
+    if (n > 2) stackHits += n - 2;
+  }
+  if (stackHits > shellBody.length * 0.08) score -= 18;
+  else if (stackHits < shellBody.length * 0.02) score += 6;
+
+  // Butt protrusion — rear hemisphere extends behind median Z
+  const backZ = data.particles
+    .filter((p) => p.facing === 'back' || p.nz < -0.3)
+    .map((p) => p.z);
+  if (backZ.length >= 8) {
+    const allZ = shellBody.map((p) => p.z).sort((a, b) => a - b);
+    const medianZ = allZ[Math.floor(allZ.length / 2)] ?? 0;
+    const protruding = backZ.filter((z) => z < medianZ - 0.08).length;
+    if (protruding >= 6) score += Math.min(12, protruding * 0.5);
+    else score -= 10;
+  }
+
   const eyes = data.particles.filter((p) => p.part === 'eye');
   const mouths = data.particles.filter((p) => p.part === 'mouth' || p.part === 'tooth');
   if (eyes.length === 0) score -= 30;

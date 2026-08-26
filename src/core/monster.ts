@@ -1,15 +1,15 @@
 import { applyButtFeatures } from './butt';
-import { createBulalashkaBlobs } from './bulalashka';
+import { createProceduralBulalashka } from './bulalashka';
 import { applyFeatures } from './features';
 import { generateMonsterName } from './names';
 import { generatePalette } from './palette';
 import { applyPatterns } from './patterns';
-import { applyGroundShadow, gridToParticles, rasterizeDualSurface } from './particles';
+import { applyGroundShadow, gridToParticles, rasterizeVolumeShell } from './particles';
 import { createRng } from './rng';
 import { scoreBulalashka } from './score';
 import type { AnimParams, MonsterData, Particle } from './types';
 
-const CANDIDATE_COUNT = 6;
+const CANDIDATE_COUNT = 4;
 
 function computeBounds(particles: Particle[]) {
   let minX = Infinity;
@@ -51,18 +51,20 @@ function makeAnim(rng: ReturnType<typeof createRng>): AnimParams {
 function generateCandidate(variantSeed: string, displaySeed: string): MonsterData {
   const rng = createRng(variantSeed);
   const palette = generatePalette(rng);
-  const { blobs, bodyArchetype, buttArchetype } = createBulalashkaBlobs(rng);
-  const threshold = rng.float(1.02, 1.32);
+  const { blobs, bodyArchetype, buttArchetype } = createProceduralBulalashka(rng);
+  const threshold = rng.float(0.95, 1.15);
 
-  let grid = rasterizeDualSurface(rng, blobs, palette, {
-    resolution: rng.int(64, 80),
+  let grid = rasterizeVolumeShell(rng, blobs, palette, {
+    resolution: rng.int(90, 110),
     threshold,
+    targetParticles: rng.int(1200, 1800),
   });
 
-  if (grid.cells.size < 180) {
-    grid = rasterizeDualSurface(rng, blobs, palette, {
-      resolution: 72,
-      threshold: 0.92,
+  if (grid.cells.size < 400) {
+    grid = rasterizeVolumeShell(rng, blobs, palette, {
+      resolution: 100,
+      threshold: 0.88,
+      targetParticles: 2000,
     });
   }
 

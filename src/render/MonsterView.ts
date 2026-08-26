@@ -34,14 +34,17 @@ export interface MonsterViewOptions {
   data: MonsterData;
   /** Pixel scale factor (home units → px). */
   scale?: number;
-  /** Fixed yaw for gallery thumbnails (~20°). */
+  /** Fixed yaw for gallery thumbnails (~23°). */
   galleryYaw?: number;
+  /** Fixed pitch for gallery thumbnails (~9°). */
+  galleryPitch?: number;
   /** Enable drag-to-rotate in detail view. */
   allowRotate?: boolean;
 }
 
 const PERSPECTIVE_K = 0.38;
-const DEFAULT_GALLERY_YAW = 0.35;
+const DEFAULT_GALLERY_YAW = 0.4;
+const DEFAULT_GALLERY_PITCH = 0.15;
 
 /**
  * 3D bulalashka particle cloud with Y-axis rotation and perspective projection.
@@ -60,8 +63,11 @@ export class MonsterView extends ParticleContainer {
   private cellPx: number;
 
   private baseYaw: number;
+  private basePitch: number;
   private dragYaw = 0;
-  private idleWobble = 0;
+  private dragPitch = 0;
+  private idleWobbleYaw = 0;
+  private idleWobblePitch = 0;
   private readonly allowRotate: boolean;
 
   // Personality-driven animation state
@@ -86,7 +92,9 @@ export class MonsterView extends ParticleContainer {
 
   private dragActive = false;
   private dragStartX = 0;
+  private dragStartY = 0;
   private dragStartYaw = 0;
+  private dragStartPitch = 0;
 
   constructor(options: MonsterViewOptions) {
     super({
@@ -104,6 +112,7 @@ export class MonsterView extends ParticleContainer {
     this.displayScale = options.scale ?? 40;
     this.cellPx = Math.max(2, options.data.cellSize * this.displayScale * 1.18);
     this.baseYaw = options.galleryYaw ?? DEFAULT_GALLERY_YAW;
+    this.basePitch = options.galleryPitch ?? DEFAULT_GALLERY_PITCH;
     this.allowRotate = options.allowRotate ?? false;
     this.eventMode = 'static';
     this.cursor = this.allowRotate ? 'grab' : 'pointer';
@@ -139,7 +148,9 @@ export class MonsterView extends ParticleContainer {
       this.on('pointerdown', (e) => {
         this.dragActive = true;
         this.dragStartX = e.global.x;
+        this.dragStartY = e.global.y;
         this.dragStartYaw = this.dragYaw;
+        this.dragStartPitch = this.dragPitch;
         this.cursor = 'grabbing';
       });
       this.on('pointerup', () => {
@@ -153,7 +164,9 @@ export class MonsterView extends ParticleContainer {
       this.on('pointermove', (e) => {
         if (!this.dragActive) return;
         const dx = e.global.x - this.dragStartX;
+        const dy = e.global.y - this.dragStartY;
         this.dragYaw = this.dragStartYaw + dx * 0.008;
+        this.dragPitch = this.dragStartPitch + dy * 0.006;
       });
     }
 
@@ -163,27 +176,65 @@ export class MonsterView extends ParticleContainer {
 
   /** Current yaw in radians (base + drag + idle wobble). */
   get yaw(): number {
-    return this.baseYaw + this.dragYaw + this.idleWobble;
+    return this.baseYaw + this.dragYaw + this.idleWobbleYaw;
+  }
+
+  /** Current pitch in radians. */
+  get pitch(): number {
+    return this.basePitch + this.dragPitch + this.idleWobblePitch;
   }
 
   setYaw(radians: number): void {
-    this.dragYaw = radians - this.baseYaw - this.idleWobble;
+    this.dragYaw = radians - this.baseYaw - this.idleWobbleYaw;
+  }
+
+  setPitch(radians: number): void {
+    this.dragPitch = radians - this.basePitch - this.idleWobblePitch;
   }
 
   addYawDelta(delta: number): void {
     this.dragYaw += delta;
   }
 
-  private project(x: number, y: number, z: number, yaw: number): { px: number; py: number; rz: number; depth: number } {
-    const cos = Math.cos(yaw);
-    const sin = Math.sin(yaw);
-    const rx = x * cos + z * sin;
-    const rz = -x * sin + z * cos;
-    const depth = Math.max(0.55, 1 + rz * PERSPECTIVE_K);
+  addPitchDelta(delta: number): void {
+    this.dragPitch += delta;
+  }
+
+  private rotatePoint(
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+    pitch: number,
+  ): { x: number; y: number; z: number } {
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+    let rx = x * cosY + z * sinY;
+    let rz = -x * sinY + z * cosY;
+    let ry = y;
+
+    const cosP = Math.cos(pitch);
+    const sinP = Math.sin(pitch);
+    const ry2 = ry * cosP - rz * sinP;
+    rz = ry * sinP + rz * cosP;
+    ry = ry2;
+
+    return { x: rx, y: ry, z: rz };
+  }
+
+  private project(
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+    pitch: number,
+  ): { px: number; py: number; rz: number; depth: number } {
+    const r = this.rotatePoint(x, y, z, yaw, pitch);
+    const depth = Math.max(0.55, 1 + r.z * PERSPECTIVE_K);
     return {
-      px: rx * depth,
-      py: -y * depth,
-      rz,
+      px: r.x * depth,
+      py: -r.y * depth,
+      rz: r.z,
       depth,
     };
   }
@@ -245,8 +296,10 @@ export class MonsterView extends ParticleContainer {
     const { jitteriness, heaviness, curiosity } = anim;
     const cell = this.data.cellSize;
 
-    this.idleWobble = Math.sin(t * anim.swayFreq * 0.7) * 0.12;
+    this.idleWobbleYaw = Math.sin(t * anim.swayFreq * 0.7) * 0.1;
+    this.idleWobblePitch = Math.cos(t * anim.swayFreq * 0.55 + 0.4) * 0.05;
     const yaw = this.yaw;
+    const pitch = this.pitch;
 
     if (this.blinkActive > 0) {
       this.blinkActive -= dt * 8;
@@ -420,7 +473,7 @@ export class MonsterView extends ParticleContainer {
         y += oy;
       }
 
-      const proj = this.project(x, y, z, yaw);
+      const proj = this.project(x, y, z, yaw, pitch);
       lp.sortZ = proj.rz;
 
       sprite.x = proj.px * scale;
@@ -432,6 +485,9 @@ export class MonsterView extends ParticleContainer {
         scaleYMul = Math.max(0.12, 1 - blink);
       }
 
+      // Backface cull via rotated surface normal vs view direction (+Z)
+      const rn = this.rotatePoint(home.nx, home.ny, home.nz, yaw, pitch);
+      const vis = rn.z;
       let alpha = 1;
       if (part === 'fleck') alpha = 0.85;
       else if (part === 'aura') alpha = 0.55;
@@ -440,9 +496,11 @@ export class MonsterView extends ParticleContainer {
         alpha = pulse;
         sizeMul *= 0.9 + 0.22 * pulse;
       }
-      // Fade back-facing features when viewed from front (and vice versa)
-      if (home.facing === 'back' && proj.rz > 0.05) alpha *= 0.35;
-      else if (home.facing === 'front' && proj.rz < -0.05) alpha *= 0.35;
+      if (vis < -0.1) {
+        alpha = 0;
+      } else {
+        alpha *= Math.max(0.35, Math.min(1, 0.4 + vis * 0.6));
+      }
 
       sprite.alpha = alpha;
 

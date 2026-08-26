@@ -16,6 +16,24 @@ import { MonsterView } from './render/MonsterView';
 
 type Mode = 'gallery' | 'detail';
 
+const GALLERY_SEEDS_KEY = 'bulalashka-gallery-seeds';
+
+function loadGallerySeeds(): string[] {
+  try {
+    const raw = sessionStorage.getItem(GALLERY_SEEDS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((s): s is string => typeof s === 'string' && s.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function saveGallerySeeds(seeds: string[]): void {
+  sessionStorage.setItem(GALLERY_SEEDS_KEY, JSON.stringify(seeds));
+}
+
 function readSeedFromUrl(): string | null {
   const params = new URLSearchParams(window.location.search);
   const seed = params.get('seed');
@@ -58,6 +76,9 @@ async function main() {
   const allSeeds: string[] = [];
 
   const emptyHintFor = (tab: GalleryTab): string | undefined => {
+    if (tab === 'all' && gallery.seedList.length === 0) {
+      return 'Натисни +1, щоб згенерувати булalashку';
+    }
     if (tab === 'favorites' && favoriteCount() === 0) return 'Лайкни когось страшненького ♥';
     if (tab === 'dislikes' && dislikeCount() === 0) return 'Немає дізлайків — поки що';
     return undefined;
@@ -141,6 +162,7 @@ async function main() {
     rows,
     cellSize,
     padding: 12,
+    seeds: loadGallerySeeds(),
     onSelect: (seed) => showDetail(seed),
   });
   allSeeds.push(...gallery.seedList);
@@ -154,10 +176,12 @@ async function main() {
   const ui = createUi(root, {
     onAddMore: () => {
       if (galleryTab !== 'all') return;
-      gallery.append(4);
+      gallery.append(1);
       allSeeds.length = 0;
       allSeeds.push(...gallery.seedList);
-      ui.showToast('+4 нових монстри');
+      saveGallerySeeds(gallery.seedList);
+      ui.showToast('+1 новий монстр');
+      ui.setMode('gallery', { tab: galleryTab, emptyHint: emptyHintFor(galleryTab) });
       layout();
     },
     onBack: () => showGallery(),

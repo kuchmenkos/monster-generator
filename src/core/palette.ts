@@ -85,11 +85,11 @@ export function generatePalette(rng: Rng): MonsterPalette {
   const eyeWhite = hslToRgb(rng.float(40, 70), rng.float(0.05, 0.2), rng.float(0.88, 0.97));
   const pupil = hslToRgb(rng.float(200, 260), rng.float(0.1, 0.4), rng.float(0.05, 0.18));
 
-  // Cartoon rear palette — warm/peachy meme tones
+  // Cartoon rear palette — warm/peachy meme tones (strong contrast vs body)
   const buttHue = rng.pick([15, 25, 330, 340, 350]) + rng.float(-8, 8);
-  const buttBase = hslToRgb(buttHue, rng.float(0.45, 0.75), rng.float(0.48, 0.62));
-  const buttHighlight = hslToRgb(buttHue + rng.float(-5, 5), rng.float(0.2, 0.45), rng.float(0.82, 0.94));
-  const buttShadow = hslToRgb(buttHue, rng.float(0.5, 0.85), rng.float(0.28, 0.42));
+  const buttBase = hslToRgb(buttHue, rng.float(0.55, 0.82), rng.float(0.52, 0.68));
+  const buttHighlight = hslToRgb(buttHue + rng.float(-5, 5), rng.float(0.25, 0.5), rng.float(0.84, 0.96));
+  const buttShadow = hslToRgb(buttHue, rng.float(0.55, 0.9), rng.float(0.22, 0.38));
 
   return {
     base,

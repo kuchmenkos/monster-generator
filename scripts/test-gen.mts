@@ -16,6 +16,8 @@ let pupilTotal = 0;
 let fillSum = 0;
 let genMsSum = 0;
 let richCoat = 0;
+let minParticles = Infinity;
+let ringStackSum = 0;
 const archetypes: Record<string, number> = {};
 const buttTypes: Record<string, number> = {};
 
@@ -34,10 +36,20 @@ for (const seed of seeds) {
   const append = m.particles.filter((p) => p.part === 'appendage');
   const butt = m.particles.filter((p) => p.part === 'butt' || p.part === 'butt_highlight');
 
+  minParticles = Math.min(minParticles, m.particles.length);
+  const stackMap = new Map<string, number>();
+  for (const p of m.particles.filter((x) => x.part === 'body' || x.part === 'butt')) {
+    const k = `${p.col},${p.row}`;
+    stackMap.set(k, (stackMap.get(k) ?? 0) + 1);
+  }
+  for (const n of stackMap.values()) {
+    if (n > 2) ringStackSum += n - 2;
+  }
+
   if (append.length === 0) noAppendages++;
   if (butt.length >= 4) withButt++;
-  if (m.particles.some((p) => p.facing === 'back')) withBack++;
-  if (m.particles.some((p) => p.facing === 'front')) withFront++;
+  if (m.particles.some((p) => p.facing === 'back' || p.nz < -0.3)) withBack++;
+  if (m.particles.some((p) => p.facing === 'front' || p.nz > 0.25)) withFront++;
   if (uniqueBodyColors(m.particles) >= 3) richCoat++;
 
   pupilTotal += pupils.length;
@@ -59,6 +71,7 @@ for (const seed of seeds) {
 
   if (!m.scaleRef || m.scaleRef < 2) throw new Error('scaleRef too low');
   if (append.length > 0) throw new Error(`limbs on ${seed}`);
+  if (m.particles.length < 500) throw new Error(`too few particles on ${seed}: ${m.particles.length}`);
 }
 
 const a = generateMonster('alpha-check');
@@ -77,8 +90,10 @@ const same =
 
 const avgFill = fillSum / seeds.length;
 const avgMs = genMsSum / seeds.length;
+const avgRingStack = ringStackSum / seeds.length;
 
 console.log('n=', seeds.length, 'avgMs=', avgMs.toFixed(1), 'avgFill=', avgFill.toFixed(3));
+console.log('minParticles=', minParticles, 'avgRingStack=', avgRingStack.toFixed(2));
 console.log('mouths', withMouth, 'cavity', withCavity, 'butt', withButt, 'front/back', withFront, withBack);
 console.log('noAppendages', noAppendages, 'richCoat', richCoat);
 console.log('archetypes', archetypes, 'buttTypes', buttTypes);
@@ -91,6 +106,7 @@ if (withBack < seeds.length * 0.9) throw new Error('missing back surface');
 if (withFront < seeds.length * 0.9) throw new Error('missing front surface');
 if (withMouth < seeds.length * 0.8) throw new Error('too few mouths');
 if (avgFill > 0.88) throw new Error('avg bbox fill too high (boxy)');
+if (avgRingStack > 80) throw new Error(`ring stacking too high: ${avgRingStack}`);
 if (pupilRanged < pupilTotal * 0.55) throw new Error('pupils missing pupilRange');
 if (avgMs > 500) throw new Error(`gen too slow: ${avgMs}ms`);
 if (richCoat < seeds.length * 0.65) throw new Error('too few coat tones');

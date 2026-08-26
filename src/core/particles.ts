@@ -8,6 +8,8 @@ export interface RasterOptions {
   /** Approx columns across the body (baseline ~28 for scaleRef). */
   resolution?: number;
   threshold?: number;
+  /** Target shell particle count for volume rasterizer. */
+  targetParticles?: number;
 }
 
 const BASELINE_RESOLUTION = 28;
@@ -144,8 +146,220 @@ function mirrorSurfaceHalf(
   }
 }
 
+/** Fibonacci sphere unit directions. */
+function fibonacciDirections(count: number): { x: number; y: number; z: number }[] {
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const dirs: { x: number; y: number; z: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    const y = 1 - (i / Math.max(1, count - 1)) * 2;
+    const r = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = golden * i;
+    dirs.push({ x: Math.cos(theta) * r, y, z: Math.sin(theta) * r });
+  }
+  return dirs;
+}
+
+function facingFromNormal(nz: number): SurfaceFacing {
+  if (nz > 0.25) return 'front';
+  if (nz < -0.25) return 'back';
+  return 'side';
+}
+
+/** Laplacian-style smoothing on shell particles in 3D. */
+function smoothShell(cells: Map<string, GridCell>, passes = 2): void {
+  for (let pass = 0; pass < passes; pass++) {
+    const updates: GridCell[] = [];
+    for (const c of cells.values()) {
+      if (c.part !== 'body' && c.part !== 'appendage') continue;
+      let sx = 0;
+      let sy = 0;
+      let sz = 0;
+      let n = 0;
+      const mergeDist = 1.8;
+      for (const o of cells.values()) {
+        if (o === c) continue;
+        const d = Math.hypot(o.x - c.x, o.y - c.y, o.z - c.z);
+        if (d > mergeDist) continue;
+        sx += o.x;
+        sy += o.y;
+        sz += o.z;
+        n++;
+      }
+      if (n < 2) continue;
+      const pull = 0.22;
+      updates.push({
+        ...c,
+        x: c.x + ((sx / n - c.x) * pull),
+        y: c.y + ((sy / n - c.y) * pull),
+        z: c.z + ((sz / n - c.z) * pull),
+      });
+    }
+    for (const u of updates) {
+      const key = u.facing
+        ? surfaceCellKey(u.col, u.row, u.facing)
+        : cellKey(u.col, u.row);
+      cells.set(key, u);
+    }
+  }
+}
+
+/**
+ * 3D raycast shell — unique (x,y,z) particles, no dual-surface ring artifacts.
+ */
+export function rasterizeVolumeShell(
+  rng: Rng,
+  blobs: Blob[],
+  palette: MonsterPalette,
+  options: RasterOptions = {},
+): MonsterGrid {
+  const threshold = options.threshold ?? rng.float(0.95, 1.15);
+  const targetParticles = options.targetParticles ?? rng.int(1200, 1800);
+  const rayCount = Math.min(1000, Math.max(550, Math.round(targetParticles * 0.45)));
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const b of blobs) {
+    minX = Math.min(minX, b.x - b.rx * 1.3);
+    maxX = Math.max(maxX, b.x + b.rx * 1.3);
+    minY = Math.min(minY, b.y - b.ry * 1.3);
+    maxY = Math.max(maxY, b.y + b.ry * 1.3);
+    minZ = Math.min(minZ, b.z - b.rz * 1.3);
+    maxZ = Math.max(maxZ, b.z + b.rz * 1.3);
+  }
+
+  const cx = (minX + maxX) * 0.5;
+  const cy = (minY + maxY) * 0.5;
+  const cz = (minZ + maxZ) * 0.5;
+  const spanX = Math.max(0.5, maxX - minX);
+  const spanY = Math.max(0.5, maxY - minY);
+  const resolution = options.resolution ?? rng.int(90, 110);
+  const cell = Math.max(spanX, spanY) / resolution;
+  const cols = Math.ceil(spanX / cell) + 4;
+  const rows = Math.ceil(spanY / cell) + 4;
+  const originX = minX - cell * 2;
+  const originY = minY - cell * 2;
+  const maxDist =
+    Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) * 0.75 + 0.5;
+  const step = Math.max(0.045, maxDist / 36);
+
+  const hits: GridCell[] = [];
+  const dirs = fibonacciDirections(rayCount);
+
+  for (const dir of dirs) {
+    let hitX = 0;
+    let hitY = 0;
+    let hitZ = 0;
+    let found = false;
+
+    for (let t = maxDist; t >= 0; t -= step) {
+      const x = cx + dir.x * t;
+      const y = cy + dir.y * t;
+      const z = cz + dir.z * t;
+      if (sampleField(blobs, x, y, z) >= threshold) {
+        hitX = x;
+        hitY = y;
+        hitZ = z;
+        found = true;
+        break;
+      }
+    }
+    if (!found) continue;
+
+    const jitter = cell * 0.15;
+    const jx = hitX + rng.float(-jitter, jitter);
+    const jy = hitY + rng.float(-jitter, jitter);
+    const jz = hitZ + rng.float(-jitter, jitter);
+    const { nx, ny, nz } = fieldNormal(blobs, jx, jy, jz);
+    const facing = facingFromNormal(nz);
+    const kind = dominantKind(blobs, jx, jy, jz);
+    const col = Math.round((jx - originX) / cell);
+    const row = Math.round((jy - originY) / cell);
+
+    hits.push({
+      col,
+      row,
+      x: jx,
+      y: jy,
+      z: jz,
+      nx,
+      ny,
+      nz,
+      color: shadeColor(palette),
+      part: kind === 'appendage' ? 'appendage' : 'body',
+      phase: rng.float(0, Math.PI * 2),
+      size: 1,
+      tipFactor: 0,
+      facing,
+    });
+  }
+
+  // Deduplicate — merge points closer than 0.6 * cell
+  const mergeR = cell * 0.6;
+  const merged: GridCell[] = [];
+  for (const h of hits) {
+    let absorbed = false;
+    for (const m of merged) {
+      if (Math.hypot(h.x - m.x, h.y - m.y, h.z - m.z) < mergeR) {
+        absorbed = true;
+        break;
+      }
+    }
+    if (!absorbed) merged.push(h);
+  }
+
+  const cells = new Map<string, GridCell>();
+  for (const c of merged) {
+    const key = surfaceCellKey(c.col, c.row, c.facing ?? 'side');
+    if (cells.has(key)) {
+      const prev = cells.get(key)!;
+      if (c.z > prev.z) cells.set(key, c);
+    } else {
+      cells.set(key, c);
+    }
+  }
+
+  smoothShell(cells, 1);
+
+  const scaleRef = resolution / BASELINE_RESOLUTION;
+  const grid: MonsterGrid = {
+    cols,
+    rows,
+    cell,
+    originX,
+    originY,
+    scaleRef,
+    shear: 0,
+    shearOriginRow: 0,
+    cells,
+  };
+
+  // Outline on shell values (surfaceCellKey — not legacy cellKey)
+  const rim: GridCell[] = [];
+  for (const c of cells.values()) {
+    if (c.part !== 'body' && c.part !== 'appendage') continue;
+    let neighbors = 0;
+    for (const o of cells.values()) {
+      if (o === c) continue;
+      if (Math.hypot(o.x - c.x, o.y - c.y) <= cell * 1.25) neighbors++;
+    }
+    if (neighbors < 4) rim.push(c);
+  }
+  for (const c of rim) {
+    c.color = palette.outline;
+    const key = surfaceCellKey(c.col, c.row, c.facing ?? 'side');
+    cells.set(key, c);
+  }
+
+  return grid;
+}
+
 /**
  * Rasterize front AND back shells of the metaball field — bulalashka dual surface.
+ * @deprecated Use rasterizeVolumeShell — dual col/row causes ring artifacts when rotated.
  */
 export function rasterizeDualSurface(
   rng: Rng,
