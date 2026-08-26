@@ -231,7 +231,9 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     emptyHint.textContent = opts.emptyHint ?? '';
 
     if (isDetail) {
-      seedLabel.textContent = opts.seed ? `seed: ${opts.seed}` : '';
+      seedLabel.textContent = opts.seed
+        ? `seed: ${opts.seed} · перетягни = обертання`
+        : '';
       setLiked(opts.seed ? hasFavorite(opts.seed) : false);
       setDisliked(opts.seed ? hasDislike(opts.seed) : false);
     } else {

@@ -1,12 +1,12 @@
+import { applyButtFeatures } from './butt';
+import { createBulalashkaBlobs } from './bulalashka';
 import { applyFeatures } from './features';
-import { createBlobs } from './field';
-import { applyLimbs } from './limbs';
 import { generateMonsterName } from './names';
 import { generatePalette } from './palette';
 import { applyPatterns } from './patterns';
-import { applyGroundShadow, gridToParticles, rasterizeField } from './particles';
+import { applyGroundShadow, gridToParticles, rasterizeDualSurface } from './particles';
 import { createRng } from './rng';
-import { scoreMonster } from './score';
+import { scoreBulalashka } from './score';
 import type { AnimParams, MonsterData, Particle } from './types';
 
 const CANDIDATE_COUNT = 6;
@@ -34,42 +34,42 @@ function computeBounds(particles: Particle[]) {
 
 function makeAnim(rng: ReturnType<typeof createRng>): AnimParams {
   return {
-    breathAmp: rng.float(0.012, 0.028),
+    breathAmp: rng.float(0.014, 0.032),
     breathFreq: rng.float(1.0, 2.0),
-    swayAmp: rng.float(0.02, 0.055),
+    swayAmp: rng.float(0.022, 0.058),
     swayFreq: rng.float(0.65, 1.4),
-    jiggleAmp: rng.float(0.002, 0.01),
-    bounceChance: rng.float(0.1, 0.32),
+    jiggleAmp: rng.float(0.003, 0.012),
+    bounceChance: rng.float(0.12, 0.35),
     blinkInterval: rng.float(1.6, 4.2),
-    jitteriness: rng.float(0.15, 0.95),
-    heaviness: rng.float(0.1, 0.85),
-    curiosity: rng.float(0.2, 0.95),
+    jitteriness: rng.float(0.2, 0.95),
+    heaviness: rng.float(0.15, 0.75),
+    curiosity: rng.float(0.25, 0.95),
   };
 }
 
-/** Single pipeline pass for a candidate seed variant. */
+/** Single bulalashka pipeline pass for a candidate seed variant. */
 function generateCandidate(variantSeed: string, displaySeed: string): MonsterData {
   const rng = createRng(variantSeed);
   const palette = generatePalette(rng);
-  const { blobs, archetype } = createBlobs(rng);
+  const { blobs, bodyArchetype, buttArchetype } = createBulalashkaBlobs(rng);
   const threshold = rng.float(1.02, 1.32);
 
-  let grid = rasterizeField(rng, blobs, palette, {
+  let grid = rasterizeDualSurface(rng, blobs, palette, {
     resolution: rng.int(64, 80),
     threshold,
   });
 
-  if (grid.cells.size < 200) {
-    grid = rasterizeField(rng, blobs, palette, {
+  if (grid.cells.size < 180) {
+    grid = rasterizeDualSurface(rng, blobs, palette, {
       resolution: 72,
       threshold: 0.92,
     });
   }
 
-  applyLimbs(rng, grid, palette, archetype);
   applyGroundShadow(grid);
   applyPatterns(rng, grid, palette);
-  applyFeatures(rng, grid, palette, archetype);
+  applyFeatures(rng, grid, palette, bodyArchetype);
+  applyButtFeatures(rng, grid, palette, buttArchetype);
 
   const particles = gridToParticles(grid);
 
@@ -84,7 +84,8 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
   return {
     seed: displaySeed,
     name: generateMonsterName(displaySeed),
-    archetype,
+    archetype: bodyArchetype,
+    buttArchetype,
     particles,
     palette,
     anim: makeAnim(rng),
@@ -95,30 +96,20 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
 }
 
 /**
- * Full deterministic pipeline: seed → best of N scored candidates.
- * Variants use `seed#v0..vN` so the same seed always picks the same winner.
+ * Full deterministic pipeline: seed → best of N scored bulalashka candidates.
  */
 export function generateMonster(seed: string): MonsterData {
   let best: MonsterData | null = null;
   let bestScore = -Infinity;
-  let bestLimbed: MonsterData | null = null;
-  let bestLimbedScore = -Infinity;
 
   for (let v = 0; v < CANDIDATE_COUNT; v++) {
     const candidate = generateCandidate(`${seed}#v${v}`, seed);
-    const s = scoreMonster(candidate);
-    const limbs = candidate.particles.filter((p) => p.part === 'appendage').length;
+    const s = scoreBulalashka(candidate);
     if (s > bestScore) {
       bestScore = s;
       best = candidate;
     }
-    if (limbs >= 8 && s > bestLimbedScore) {
-      bestLimbedScore = s;
-      bestLimbed = candidate;
-    }
   }
 
-  // Prefer a limbed candidate unless the limbless one scores much higher
-  if (bestLimbed && bestLimbedScore >= bestScore - 12) return bestLimbed;
   return best!;
 }

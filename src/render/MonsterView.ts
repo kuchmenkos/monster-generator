@@ -27,17 +27,24 @@ interface LiveParticle {
   home: MonsterParticle;
   sprite: Particle;
   part: ParticlePart;
+  sortZ: number;
 }
 
 export interface MonsterViewOptions {
   data: MonsterData;
   /** Pixel scale factor (home units → px). */
   scale?: number;
+  /** Fixed yaw for gallery thumbnails (~20°). */
+  galleryYaw?: number;
+  /** Enable drag-to-rotate in detail view. */
+  allowRotate?: boolean;
 }
 
+const PERSPECTIVE_K = 0.38;
+const DEFAULT_GALLERY_YAW = 0.35;
+
 /**
- * Solid-grid monster with lively idle: wobble, glances, pupil saccades.
- * Screen Y is inverted vs world Y so legs point down.
+ * 3D bulalashka particle cloud with Y-axis rotation and perspective projection.
  */
 export class MonsterView extends ParticleContainer {
   readonly data: MonsterData;
@@ -52,9 +59,14 @@ export class MonsterView extends ParticleContainer {
   private elapsed = 0;
   private cellPx: number;
 
+  private baseYaw: number;
+  private dragYaw = 0;
+  private idleWobble = 0;
+  private readonly allowRotate: boolean;
+
   // Personality-driven animation state
   private nextGlanceAt: number;
-  private glanceT = 0; // 0 idle, 0→1→0 during glance
+  private glanceT = 0;
   private glanceDir = 1;
   private glanceActive = false;
   private pupilOx = 0;
@@ -72,6 +84,10 @@ export class MonsterView extends ParticleContainer {
   private containerScaleX = 1;
   private containerScaleY = 1;
 
+  private dragActive = false;
+  private dragStartX = 0;
+  private dragStartYaw = 0;
+
   constructor(options: MonsterViewOptions) {
     super({
       dynamicProperties: {
@@ -87,17 +103,18 @@ export class MonsterView extends ParticleContainer {
     this.data = options.data;
     this.displayScale = options.scale ?? 40;
     this.cellPx = Math.max(2, options.data.cellSize * this.displayScale * 1.18);
+    this.baseYaw = options.galleryYaw ?? DEFAULT_GALLERY_YAW;
+    this.allowRotate = options.allowRotate ?? false;
     this.eventMode = 'static';
-    this.cursor = 'pointer';
+    this.cursor = this.allowRotate ? 'grab' : 'pointer';
 
     const tex = getParticleTexture();
-    const s = this.displayScale;
     for (const p of options.data.particles) {
       const size = this.cellPx * p.size;
       const sp = new Particle({
         texture: tex,
-        x: p.x * s,
-        y: -p.y * s,
+        x: 0,
+        y: 0,
         anchorX: 0.5,
         anchorY: 0.5,
         scaleX: size / 16,
@@ -106,7 +123,7 @@ export class MonsterView extends ParticleContainer {
         alpha: p.part === 'fleck' ? 0.85 : p.part === 'aura' ? 0.55 : 1,
       });
       this.addParticle(sp);
-      this.live.push({ home: p, sprite: sp, part: p.part });
+      this.live.push({ home: p, sprite: sp, part: p.part, sortZ: p.z });
     }
 
     const anim = options.data.anim;
@@ -118,20 +135,69 @@ export class MonsterView extends ParticleContainer {
     this.nextShiverAt = 4 + seedJitter * 6;
     this.nextEyeRollAt = 8 + seedJitter * 10;
 
+    if (this.allowRotate) {
+      this.on('pointerdown', (e) => {
+        this.dragActive = true;
+        this.dragStartX = e.global.x;
+        this.dragStartYaw = this.dragYaw;
+        this.cursor = 'grabbing';
+      });
+      this.on('pointerup', () => {
+        this.dragActive = false;
+        this.cursor = 'grab';
+      });
+      this.on('pointerupoutside', () => {
+        this.dragActive = false;
+        this.cursor = 'grab';
+      });
+      this.on('pointermove', (e) => {
+        if (!this.dragActive) return;
+        const dx = e.global.x - this.dragStartX;
+        this.dragYaw = this.dragStartYaw + dx * 0.008;
+      });
+    }
+
     this.refreshBounds();
     this.updateHitArea();
+  }
+
+  /** Current yaw in radians (base + drag + idle wobble). */
+  get yaw(): number {
+    return this.baseYaw + this.dragYaw + this.idleWobble;
+  }
+
+  setYaw(radians: number): void {
+    this.dragYaw = radians - this.baseYaw - this.idleWobble;
+  }
+
+  addYawDelta(delta: number): void {
+    this.dragYaw += delta;
+  }
+
+  private project(x: number, y: number, z: number, yaw: number): { px: number; py: number; rz: number; depth: number } {
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    const rx = x * cos + z * sin;
+    const rz = -x * sin + z * cos;
+    const depth = Math.max(0.55, 1 + rz * PERSPECTIVE_K);
+    return {
+      px: rx * depth,
+      py: -y * depth,
+      rz,
+      depth,
+    };
   }
 
   private updateHitArea(): void {
     const b = this.data.bounds;
     const s = this.displayScale;
-    const pad = s * 0.25;
+    const pad = s * 0.35;
     this.hitArea = {
       contains: (x: number, y: number) =>
         x >= b.minX * s - pad &&
         x <= b.maxX * s + pad &&
-        y >= -b.maxY * s - pad &&
-        y <= -b.minY * s + pad,
+        y >= b.minY * s - pad &&
+        y <= b.maxY * s + pad,
     };
   }
 
@@ -140,7 +206,7 @@ export class MonsterView extends ParticleContainer {
     const s = this.displayScale;
     const pad = s * 0.35;
     const x = b.minX * s - pad;
-    const y = -b.maxY * s - pad;
+    const y = b.minY * s - pad;
     const w = (b.maxX - b.minX) * s + pad * 2;
     const h = (b.maxY - b.minY) * s + pad * 2;
     this.boundsArea = new Rectangle(x, y, Math.max(8, w), Math.max(8, h));
@@ -161,10 +227,6 @@ export class MonsterView extends ParticleContainer {
     this.setDisplayScale(scale);
   }
 
-  /**
-   * Point pupils toward a world-space position (detail view pointer).
-   * Pass null to resume idle saccades.
-   */
   lookAt(worldX: number | null, worldY?: number): void {
     if (worldX === null || worldY === undefined) {
       this.lookFollow = false;
@@ -183,7 +245,9 @@ export class MonsterView extends ParticleContainer {
     const { jitteriness, heaviness, curiosity } = anim;
     const cell = this.data.cellSize;
 
-    // Blink
+    this.idleWobble = Math.sin(t * anim.swayFreq * 0.7) * 0.12;
+    const yaw = this.yaw;
+
     if (this.blinkActive > 0) {
       this.blinkActive -= dt * 8;
       if (this.blinkActive < 0) this.blinkActive = 0;
@@ -198,7 +262,6 @@ export class MonsterView extends ParticleContainer {
     const blinkAmt = this.blinkActive;
     const blink = blinkAmt > 0.5 ? (1 - blinkAmt) * 2 : blinkAmt * 2;
 
-    // Bounce
     this.nextBounceCheck -= dt;
     if (this.nextBounceCheck <= 0) {
       this.nextBounceCheck = 2 + Math.random() * 4 + heaviness * 2;
@@ -215,7 +278,6 @@ export class MonsterView extends ParticleContainer {
       }
     }
 
-    // Mini-turn glance
     if (!this.glanceActive) {
       this.nextGlanceAt -= dt;
       if (this.nextGlanceAt <= 0 && Math.random() < 0.35 + curiosity * 0.5) {
@@ -240,9 +302,7 @@ export class MonsterView extends ParticleContainer {
           : (1 - this.glanceT) * 2
         : 0;
     const turnScaleX = 1 - g * 0.14;
-    const turnRot = this.glanceDir * g * (0.08 + curiosity * 0.04);
 
-    // Eye-roll burst (rare)
     if (this.eyeRollT > 0) {
       this.eyeRollT -= dt;
       const ang = (1 - this.eyeRollT / 0.7) * Math.PI * 2;
@@ -257,7 +317,6 @@ export class MonsterView extends ParticleContainer {
       }
 
       if (this.lookFollow) {
-        // Local offset from monster center toward pointer
         const lx = (this.lookWorldX - this.x) / scale;
         const ly = -(this.lookWorldY - this.y) / scale;
         const amp = (0.45 + curiosity * 0.35) * cell;
@@ -275,12 +334,10 @@ export class MonsterView extends ParticleContainer {
       }
     }
 
-    // Smooth lerp pupils toward target
     const lerpSpeed = (6 + curiosity * 8) * dt;
     this.pupilOx += (this.pupilTx - this.pupilOx) * Math.min(1, lerpSpeed);
     this.pupilOy += (this.pupilTy - this.pupilOy) * Math.min(1, lerpSpeed);
 
-    // Shiver burst
     if (this.shiverT > 0) {
       this.shiverT -= dt;
     } else {
@@ -294,11 +351,6 @@ export class MonsterView extends ParticleContainer {
     }
     const shiver = this.shiverT > 0 ? 0.012 + jitteriness * 0.02 : 0;
 
-    // Continuous wobble rotation
-    const wobbleAmp = (0.025 + (1 - heaviness) * 0.035) * (0.7 + jitteriness * 0.5);
-    const wobble = Math.sin(t * anim.swayFreq * 0.85) * wobbleAmp;
-    this.rotation = wobble + turnRot;
-
     const breath = Math.sin(t * anim.breathFreq) * anim.breathAmp;
     const swayBase = Math.sin(t * anim.swayFreq) * anim.swayAmp;
 
@@ -306,10 +358,13 @@ export class MonsterView extends ParticleContainer {
     this.containerScaleX = turnScaleX * (1 + bounceSquash);
     this.containerScaleY = 1 - bounceSquash * 0.9;
     this.scale.set(this.containerScaleX, this.containerScaleY);
+    this.rotation = this.glanceDir * g * (0.04 + curiosity * 0.02);
 
-    for (const { home, sprite, part } of this.live) {
+    for (const lp of this.live) {
+      const { home, sprite, part } = lp;
       let x = home.x;
       let y = home.y;
+      let z = home.z;
 
       x *= 1 + breath * 0.45;
       y *= 1 - breath;
@@ -317,13 +372,11 @@ export class MonsterView extends ParticleContainer {
       const heightFactor = Math.min(1.2, Math.max(0, (home.y + 1) * 0.5));
       const depthFactor = 0.55 + home.z * 0.85;
       const appendBoost =
-        part === 'appendage'
-          ? 1 + home.tipFactor * 1.6
-          : part === 'fleck'
-            ? 2.4
-            : part === 'aura'
-              ? 1.4
-              : 1;
+        part === 'fleck' || part === 'butt_highlight' || part === 'tail'
+          ? 2
+          : part === 'aura'
+            ? 1.4
+            : 1;
       const sway =
         (swayBase + Math.sin(t * anim.swayFreq + home.row * 0.15) * anim.swayAmp * 0.25) *
         heightFactor *
@@ -331,12 +384,12 @@ export class MonsterView extends ParticleContainer {
         appendBoost;
       x += sway;
 
-      // Coherent body: only rim / limbs / flecks jiggle independently
       const canJig =
-        (home.isRim && part !== 'body') ||
-        (part === 'appendage' && home.tipFactor > 0.28) ||
+        (home.isRim && part !== 'body' && part !== 'butt') ||
         part === 'fleck' ||
         part === 'aura' ||
+        part === 'butt_highlight' ||
+        part === 'tail' ||
         home.tipFactor > 0.28;
       if (canJig) {
         const jig = anim.jiggleAmp * (0.4 + home.tipFactor * 1.2) * (1 + jitteriness);
@@ -359,7 +412,6 @@ export class MonsterView extends ParticleContainer {
           ox = Math.max(-pr.x, Math.min(pr.x, ox));
           oy = Math.max(-pr.y, Math.min(pr.y, oy));
         } else {
-          // Fallback: clamp to ~0.6 cell
           const lim = cell * 0.55;
           ox = Math.max(-lim, Math.min(lim, ox));
           oy = Math.max(-lim * 0.7, Math.min(lim * 0.7, oy));
@@ -368,10 +420,13 @@ export class MonsterView extends ParticleContainer {
         y += oy;
       }
 
-      sprite.x = x * scale;
-      sprite.y = -y * scale - home.z * scale * 0.03;
+      const proj = this.project(x, y, z, yaw);
+      lp.sortZ = proj.rz;
 
-      let sizeMul = home.size;
+      sprite.x = proj.px * scale;
+      sprite.y = proj.py * scale;
+
+      let sizeMul = home.size * proj.depth;
       let scaleYMul = 1;
       if ((part === 'eye' || part === 'pupil' || part === 'outline') && blink > 0) {
         scaleYMul = Math.max(0.12, 1 - blink);
@@ -385,11 +440,26 @@ export class MonsterView extends ParticleContainer {
         alpha = pulse;
         sizeMul *= 0.9 + 0.22 * pulse;
       }
+      // Fade back-facing features when viewed from front (and vice versa)
+      if (home.facing === 'back' && proj.rz > 0.05) alpha *= 0.35;
+      else if (home.facing === 'front' && proj.rz < -0.05) alpha *= 0.35;
+
       sprite.alpha = alpha;
 
       const px = Math.max(2, this.cellPx * sizeMul);
       sprite.scaleX = px / 16;
       sprite.scaleY = (px / 16) * scaleYMul;
+    }
+
+    // Back-to-front draw order by projected depth
+    this.live.sort((a, b) => a.sortZ - b.sortZ);
+    for (let i = 0; i < this.live.length; i++) {
+      const sp = this.live[i]!.sprite;
+      const idx = this.particleChildren.indexOf(sp);
+      if (idx >= 0 && idx !== i) {
+        this.removeParticle(sp);
+        this.addParticle(sp);
+      }
     }
 
     this.update();

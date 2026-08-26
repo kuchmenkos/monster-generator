@@ -275,23 +275,6 @@ async function main() {
     }
   });
 
-  let pointerX = 0;
-  let pointerDown = false;
-  app.canvas.addEventListener('pointerdown', (e) => {
-    if (mode !== 'detail') return;
-    pointerDown = true;
-    pointerX = e.clientX;
-  });
-  app.canvas.addEventListener('pointerup', (e) => {
-    if (!pointerDown || mode !== 'detail') return;
-    pointerDown = false;
-    const dx = e.clientX - pointerX;
-    if (Math.abs(dx) > 60) navigate(dx < 0 ? 1 : -1);
-  });
-  app.canvas.addEventListener('pointercancel', () => {
-    pointerDown = false;
-  });
-
   window.addEventListener('resize', () => {
     layout();
   });

@@ -1,8 +1,8 @@
 import { darken } from './palette';
 import { dominantKind, fieldNormal, sampleField } from './field';
 import type { Rng } from './rng';
-import type { Blob, GridCell, MonsterGrid, MonsterPalette } from './types';
-import { cellKey } from './types';
+import type { Blob, GridCell, MonsterGrid, MonsterPalette, SurfaceFacing } from './types';
+import { cellKey, surfaceCellKey } from './types';
 
 export interface RasterOptions {
   /** Approx columns across the body (baseline ~28 for scaleRef). */
@@ -62,6 +62,212 @@ function frontSurfaceZ(
     }
   }
   return null;
+}
+
+/** Back-most z where the field is solid (ray from back → front). */
+function backSurfaceZ(
+  blobs: Blob[],
+  x: number,
+  y: number,
+  minZ: number,
+  maxZ: number,
+  threshold: number,
+  step: number,
+): number | null {
+  for (let z = minZ; z <= maxZ; z += step) {
+    if (sampleField(blobs, x, y, z) >= threshold) {
+      return z;
+    }
+  }
+  return null;
+}
+
+function storeSurfaceCell(
+  cells: Map<string, GridCell>,
+  col: number,
+  row: number,
+  facing: SurfaceFacing,
+  x: number,
+  y: number,
+  z: number,
+  blobs: Blob[],
+  palette: MonsterPalette,
+  rng: Rng,
+): void {
+  const key = surfaceCellKey(col, row, facing);
+  if (cells.has(key)) return;
+  const { nx, ny, nz } = fieldNormal(blobs, x, y, z);
+  const kind = dominantKind(blobs, x, y, z);
+  cells.set(key, {
+    col,
+    row,
+    x,
+    y,
+    z,
+    nx,
+    ny,
+    nz,
+    color: palette.base,
+    part: kind === 'appendage' ? 'appendage' : 'body',
+    phase: rng.float(0, Math.PI * 2),
+    size: 1,
+    tipFactor: 0,
+    facing,
+  });
+}
+
+function mirrorSurfaceHalf(
+  cells: Map<string, GridCell>,
+  midCol: number,
+  cols: number,
+  originX: number,
+  cell: number,
+  facing: SurfaceFacing,
+): void {
+  const mirrored: GridCell[] = [];
+  for (const c of cells.values()) {
+    if (c.facing !== facing) continue;
+    if (c.col === midCol) continue;
+    const mirrorCol = midCol * 2 - c.col;
+    if (mirrorCol < 0 || mirrorCol >= cols) continue;
+    const mk = surfaceCellKey(mirrorCol, c.row, facing);
+    if (cells.has(mk)) continue;
+    mirrored.push({
+      ...c,
+      col: mirrorCol,
+      x: originX + mirrorCol * cell,
+      nx: -c.nx,
+    });
+  }
+  for (const m of mirrored) {
+    cells.set(surfaceCellKey(m.col, m.row, facing), m);
+  }
+}
+
+/**
+ * Rasterize front AND back shells of the metaball field — bulalashka dual surface.
+ */
+export function rasterizeDualSurface(
+  rng: Rng,
+  blobs: Blob[],
+  palette: MonsterPalette,
+  options: RasterOptions = {},
+): MonsterGrid {
+  const threshold = options.threshold ?? rng.float(1.02, 1.32);
+  const resolution = options.resolution ?? rng.int(64, 80);
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const b of blobs) {
+    minX = Math.min(minX, b.x - b.rx * 1.25);
+    maxX = Math.max(maxX, b.x + b.rx * 1.25);
+    minY = Math.min(minY, b.y - b.ry * 1.25);
+    maxY = Math.max(maxY, b.y + b.ry * 1.25);
+    minZ = Math.min(minZ, b.z - b.rz * 1.25);
+    maxZ = Math.max(maxZ, b.z + b.rz * 1.25);
+  }
+
+  const spanX = Math.max(0.5, maxX - minX);
+  const spanY = Math.max(0.5, maxY - minY);
+  const cell = Math.max(spanX, spanY) / resolution;
+  const cols = Math.ceil(spanX / cell) + 2;
+  const rows = Math.ceil(spanY / cell) + 2;
+  const originX = minX - cell;
+  const originY = minY - cell;
+  const zStep = Math.max(0.04, (maxZ - minZ) / 18);
+
+  const cells = new Map<string, GridCell>();
+  const midCol = Math.floor(cols / 2);
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col <= midCol; col++) {
+      const x = originX + col * cell;
+      const y = originY + row * cell;
+
+      const zFront = frontSurfaceZ(blobs, x, y, minZ, maxZ, threshold, zStep);
+      if (zFront !== null) {
+        storeSurfaceCell(cells, col, row, 'front', x, y, zFront, blobs, palette, rng);
+      }
+
+      const zBack = backSurfaceZ(blobs, x, y, minZ, maxZ, threshold, zStep);
+      if (zBack !== null && (zFront === null || zBack < zFront - zStep * 0.5)) {
+        storeSurfaceCell(cells, col, row, 'back', x, y, zBack, blobs, palette, rng);
+      }
+    }
+  }
+
+  mirrorSurfaceHalf(cells, midCol, cols, originX, cell, 'front');
+  mirrorSurfaceHalf(cells, midCol, cols, originX, cell, 'back');
+
+  // Morphological close on each facing layer separately
+  const closeLayer = (facing: SurfaceFacing) => {
+    const toFill: GridCell[] = [];
+    for (let row = 1; row < rows - 1; row++) {
+      for (let col = 1; col < cols - 1; col++) {
+        const key = surfaceCellKey(col, row, facing);
+        if (cells.has(key)) continue;
+        let n = 0;
+        let sample: GridCell | null = null;
+        for (const [dc, dr] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ] as const) {
+          const nb = cells.get(surfaceCellKey(col + dc, row + dr, facing));
+          if (nb) {
+            n++;
+            sample = nb;
+          }
+        }
+        if (n >= 3 && sample) {
+          toFill.push({
+            ...sample,
+            col,
+            row,
+            x: originX + col * cell,
+            y: originY + row * cell,
+            z: sample.z - 0.01,
+            phase: rng.float(0, Math.PI * 2),
+            part: 'body',
+            tipFactor: 0,
+            facing,
+            color: darken(sample.color, 0.05),
+          });
+        }
+      }
+    }
+    for (const f of toFill) {
+      cells.set(surfaceCellKey(f.col, f.row, facing), f);
+    }
+  };
+  closeLayer('front');
+  closeLayer('back');
+
+  const scaleRef = resolution / BASELINE_RESOLUTION;
+  const grid: MonsterGrid = {
+    cols,
+    rows,
+    cell,
+    originX,
+    originY,
+    scaleRef,
+    shear: 0,
+    shearOriginRow: 0,
+    cells,
+  };
+  applyAsymmetry(rng, grid, palette);
+  applyOrganicRim(rng, grid, palette);
+  roundSharpCorners(grid);
+  pinchWaist(grid);
+  applySilhouetteOutline(grid, palette);
+  applyFlecksAndDrips(rng, grid, palette);
+
+  return grid;
 }
 
 /**
@@ -263,7 +469,13 @@ export function rasterizeField(
 }
 
 function isSolidPart(part: string): boolean {
-  return part === 'body' || part === 'appendage';
+  return (
+    part === 'body' ||
+    part === 'appendage' ||
+    part === 'butt' ||
+    part === 'butt_highlight' ||
+    part === 'tail'
+  );
 }
 
 /** Tag silhouette rim cells for coherent-interior animation. */
@@ -650,6 +862,7 @@ export function gridToParticles(grid: MonsterGrid) {
     col: c.col,
     row: c.row,
     tipFactor: c.tipFactor,
+    facing: c.facing,
     mouthRole: c.mouthRole,
     isRim: c.isRim,
     pupilRange: c.pupilRange,

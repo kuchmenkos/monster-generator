@@ -1,7 +1,7 @@
 import { darken, lighten } from './palette';
 import type { Rng } from './rng';
-import type { GridCell, MonsterGrid, MonsterPalette, MouthRole, ParticlePart } from './types';
-import { cellKey } from './types';
+import type { GridCell, MonsterGrid, MonsterPalette, MouthRole, ParticlePart, SurfaceFacing } from './types';
+import { cellKey, surfaceCellKey } from './types';
 
 type EyeShape =
   | 'round'
@@ -30,12 +30,16 @@ function put(
   size = 1,
   mouthRole?: MouthRole,
 ): void {
-  grid.cells.set(cellKey(col, row), {
+  const frontKey = surfaceCellKey(col, row, 'front');
+  const legacyKey = cellKey(col, row);
+  const key = grid.cells.has(frontKey) ? frontKey : legacyKey;
+  const existing = grid.cells.get(key);
+  grid.cells.set(key, {
     col,
     row,
     x: grid.originX + col * grid.cell,
     y: grid.originY + row * grid.cell,
-    z: base.z + zBoost,
+    z: (existing?.z ?? 0) + zBoost,
     nx: 0.1,
     ny: 0.1,
     nz: 1,
@@ -44,16 +48,21 @@ function put(
     phase: base.phase,
     size,
     tipFactor: 0,
+    facing: (existing?.facing ?? 'front') as SurfaceFacing,
     mouthRole,
   });
 }
 
 function bodyOnly(grid: MonsterGrid): GridCell[] {
-  return [...grid.cells.values()].filter((c) => c.part === 'body');
+  return [...grid.cells.values()].filter(
+    (c) => c.part === 'body' && (c.facing === 'front' || c.facing === undefined),
+  );
 }
 
 /** True if col/row is on body (or within 1-cell soft rim for lip ends). */
 function nearBody(grid: MonsterGrid, col: number, row: number, soft = false): boolean {
+  const front = grid.cells.get(surfaceCellKey(col, row, 'front'));
+  if (front?.part === 'body') return true;
   if (grid.cells.get(cellKey(col, row))?.part === 'body') return true;
   if (!soft) return false;
   for (const [dc, dr] of [
@@ -62,9 +71,16 @@ function nearBody(grid: MonsterGrid, col: number, row: number, soft = false): bo
     [0, 1],
     [0, -1],
   ] as const) {
+    const nb = grid.cells.get(surfaceCellKey(col + dc, row + dr, 'front'));
+    if (nb?.part === 'body') return true;
     if (grid.cells.get(cellKey(col + dc, row + dr))?.part === 'body') return true;
   }
   return false;
+}
+
+function cellAt(grid: MonsterGrid, col: number, row: number): GridCell | undefined {
+  const frontKey = surfaceCellKey(col, row, 'front');
+  return grid.cells.get(frontKey) ?? grid.cells.get(cellKey(col, row));
 }
 
 function faceRegion(grid: MonsterGrid, shiftX: number, shiftY: number): GridCell[] {
@@ -226,7 +242,7 @@ function paintEyeShaped(
     const pupilRange = { x: rangeX, y: rangeY };
     const big = w >= 5 && h >= 5;
     put(grid, originCol + px, originRow + py, base, palette.pupil, 'pupil', 0.055);
-    const pupilCell = grid.cells.get(cellKey(originCol + px, originRow + py));
+    const pupilCell = cellAt(grid, originCol + px, originRow + py);
     if (pupilCell) pupilCell.pupilRange = pupilRange;
     if (big) {
       for (const [dx, dy] of [
@@ -238,7 +254,7 @@ function paintEyeShaped(
         const ty = originRow + py + dy;
         if (mask.has(`${px + dx},${py + dy}`)) {
           put(grid, tx, ty, base, palette.pupil, 'pupil', 0.055);
-          const c = grid.cells.get(cellKey(tx, ty));
+          const c = cellAt(grid, tx, ty);
           if (c) c.pupilRange = pupilRange;
         }
       }
@@ -558,7 +574,7 @@ export function applyFeatures(
   const sr = grid.scaleRef;
 
   const eyePick: EyeArchetype[] =
-    bodyArchetype === 'bighead'
+    bodyArchetype === 'mushroom_cap'
       ? ['goggle', 'cyclops-giant', 'cyclops-giant', 'mismatched']
       : ['masks', 'goggle', 'goggle', 'cyclops-giant', 'cluster', 'mismatched'];
   const archetype = rng.pick(eyePick);

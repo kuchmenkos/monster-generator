@@ -14,7 +14,7 @@ export class DetailView extends Container {
     this.clear();
     const monster = data ?? generateMonster(seed);
     this.currentSeed = seed;
-    const view = new MonsterView({ data: monster, scale: 110 });
+    const view = new MonsterView({ data: monster, scale: 110, galleryYaw: 0, allowRotate: true });
     this.view = view;
     view.on('pointermove', (e) => {
       const g = e.global;

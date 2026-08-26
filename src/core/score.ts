@@ -47,14 +47,120 @@ export function countDetachedAppendages(particles: Particle[]): number {
 export function uniqueBodyColors(particles: Particle[]): number {
   const colors = new Set<number>();
   for (const p of particles) {
-    if (p.part === 'body') colors.add(p.color);
+    if (
+      p.part === 'body' ||
+      p.part === 'butt' ||
+      p.part === 'butt_highlight' ||
+      p.part === 'fleck'
+    ) {
+      colors.add(p.color);
+    }
   }
   return colors.size;
 }
 
 /**
- * Quality scorer for rejection sampling.
- * Higher = better. Penalizes boxy silhouettes; rewards limbs, face, organic edges.
+ * Quality scorer for bulalashka rejection sampling.
+ * Limbless, organic body, front face + rear butt required.
+ */
+export function scoreBulalashka(data: MonsterData): number {
+  const appendages = data.particles.filter((p) => p.part === 'appendage');
+  if (appendages.length > 0) return -1000;
+
+  const body = data.particles.filter(
+    (p) =>
+      p.part === 'body' ||
+      p.part === 'butt' ||
+      p.part === 'butt_highlight' ||
+      p.part === 'tail' ||
+      p.part === 'fleck',
+  );
+  if (body.length < 40) return -1000;
+
+  let score = 0;
+
+  const cols = body.map((p) => p.col);
+  const rows = body.map((p) => p.row);
+  const minC = Math.min(...cols);
+  const maxC = Math.max(...cols);
+  const minR = Math.min(...rows);
+  const maxR = Math.max(...rows);
+  const bw = Math.max(1, maxC - minC + 1);
+  const bh = Math.max(1, maxR - minR + 1);
+  const uniqueCells = new Set(body.map((p) => `${p.col},${p.row}`));
+  const fill = uniqueCells.size / (bw * bh);
+  if (fill > 0.88) return -1000;
+  if (fill > 0.82) score -= 15;
+  else if (fill < 0.45) score += 10;
+  else score += 6;
+
+  const widths: number[] = [];
+  for (let r = minR; r <= maxR; r++) {
+    let lo = Infinity;
+    let hi = -Infinity;
+    let any = false;
+    for (const p of body) {
+      if (p.row !== r) continue;
+      any = true;
+      lo = Math.min(lo, p.col);
+      hi = Math.max(hi, p.col);
+    }
+    if (any) widths.push(hi - lo + 1);
+  }
+  if (widths.length >= 4) {
+    const mean = widths.reduce((a, b) => a + b, 0) / widths.length;
+    const variance =
+      widths.reduce((a, b) => a + (b - mean) * (b - mean), 0) / widths.length;
+    const cv = Math.sqrt(variance) / Math.max(1, mean);
+    if (cv < 0.08) score -= 25;
+    else if (cv < 0.15) score -= 8;
+    else score += Math.min(18, cv * 40);
+  }
+
+  const frontBody = data.particles.filter((p) => p.facing === 'front' && p.part === 'body');
+  const backBody = data.particles.filter(
+    (p) => p.facing === 'back' && (p.part === 'body' || p.part === 'butt'),
+  );
+  if (frontBody.length < 20) score -= 30;
+  else score += 8;
+  if (backBody.length < 12) score -= 25;
+  else score += 8;
+
+  const buttCells = data.particles.filter(
+    (p) => p.part === 'butt' || p.part === 'butt_highlight',
+  );
+  if (buttCells.length < 4) score -= 35;
+  else score += Math.min(14, buttCells.length * 0.4);
+
+  const eyes = data.particles.filter((p) => p.part === 'eye');
+  const mouths = data.particles.filter((p) => p.part === 'mouth' || p.part === 'tooth');
+  if (eyes.length === 0) score -= 30;
+  else score += 6;
+  if (mouths.length === 0) score -= 18;
+  else score += 6;
+  if (mouths.some((p) => p.mouthRole === 'cavity')) score += 4;
+
+  if (data.archetype === 'pear' || data.archetype === 'dumpling' || data.archetype === 'teardrop') {
+    score += 5;
+  }
+
+  const aspect = bw / bh;
+  if (aspect > 0.85 && aspect < 1.15) score -= 14;
+  else if (aspect > 0.7 && aspect < 1.3) score -= 5;
+  else score += 5;
+
+  const tones = uniqueBodyColors(data.particles);
+  if (tones >= 4) score += 10;
+  else if (tones >= 3) score += 6;
+
+  const flecks = data.particles.filter((p) => p.part === 'fleck');
+  if (flecks.length >= 2) score += 3;
+
+  return score;
+}
+
+/**
+ * Legacy monster scorer (kept for reference scripts).
  */
 export function scoreMonster(data: MonsterData): number {
   const body = data.particles.filter(
@@ -156,10 +262,15 @@ export function scoreMonster(data: MonsterData): number {
   return score;
 }
 
-/** Quick helper for tests: bbox fill ratio of solid particles. */
+/** Quick helper for tests: bbox fill ratio of solid particles (unique col/row). */
 export function bboxFill(particles: Particle[]): number {
   const body = particles.filter(
-    (p) => p.part === 'body' || p.part === 'appendage',
+    (p) =>
+      p.part === 'body' ||
+      p.part === 'appendage' ||
+      p.part === 'butt' ||
+      p.part === 'butt_highlight' ||
+      p.part === 'tail',
   );
   if (body.length === 0) return 0;
   const minC = Math.min(...body.map((p) => p.col));
@@ -167,5 +278,6 @@ export function bboxFill(particles: Particle[]): number {
   const minR = Math.min(...body.map((p) => p.row));
   const maxR = Math.max(...body.map((p) => p.row));
   const area = Math.max(1, (maxC - minC + 1) * (maxR - minR + 1));
-  return body.length / area;
+  const unique = new Set(body.map((p) => `${p.col},${p.row}`));
+  return unique.size / area;
 }
