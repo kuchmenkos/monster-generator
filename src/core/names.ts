@@ -92,15 +92,3 @@ export function generateMonsterName(seed: string): string {
   if (scheme === 1) return `${base} ${rng.pick(NICKNAMES)}`;
   return `${base}-${rng.pick(SUFFIXES)} ${rng.pick(NICKNAMES)}`;
 }
-
-/** Short utterance for talk bubble — varies with click counter. */
-export function generateSpeech(seed: string, clickIndex = 0): string {
-  const rng = createRng(`${seed}:talk:${clickIndex}`);
-  const n = rng.int(2, 4);
-  const parts: string[] = [];
-  for (let i = 0; i < n; i++) {
-    parts.push(rng.pick(SUFFIXES));
-  }
-  const bang = rng.pick(['!', '!!', '...', '?!']);
-  return parts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('-') + bang;
-}

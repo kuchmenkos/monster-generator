@@ -44,10 +44,6 @@ function makeAnim(rng: ReturnType<typeof createRng>): AnimParams {
     jitteriness: rng.float(0.15, 0.95),
     heaviness: rng.float(0.1, 0.85),
     curiosity: rng.float(0.2, 0.95),
-    talkRate: rng.float(3, 9),
-    talkSyllables: rng.int(2, 8),
-    // Stronger base open in cell units — scaled by scaleRef at render
-    talkAmp: rng.float(1.5, 3.0),
   };
 }
 

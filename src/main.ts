@@ -147,8 +147,6 @@ async function main() {
 
   const detail = new DetailView();
   detail.visible = false;
-  detail.onSpeech = (text) => ui.showSpeech(text);
-  detail.onSpeechEnd = () => ui.hideSpeech();
 
   app.stage.addChild(gallery);
   app.stage.addChild(detail);

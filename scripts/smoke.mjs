@@ -17,13 +17,6 @@ await page.goto('http://127.0.0.1:5173/?seed=smoketest1', {
 await page.waitForTimeout(2500);
 await page.screenshot({ path: 'debug-v3-detail-a.png' });
 
-// Talk
-const canvas = page.locator('canvas');
-await canvas.click({ position: { x: 640, y: 480 } });
-await page.waitForTimeout(180);
-await page.screenshot({ path: 'debug-v3-talk.png' });
-await page.waitForTimeout(1000);
-
 // Next via arrow
 await page.keyboard.press('ArrowRight');
 await page.waitForTimeout(1200);
@@ -68,7 +61,6 @@ if (pngs[0]) console.log('latest png', pngs[0].f, fs.statSync(`${disDir}/${pngs[
 for (const s of [
   'debug-v3-gallery.png',
   'debug-v3-detail-a.png',
-  'debug-v3-talk.png',
   'debug-v3-detail-b.png',
   'debug-v3-detail-c.png',
 ]) {

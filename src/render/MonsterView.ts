@@ -72,16 +72,6 @@ export class MonsterView extends ParticleContainer {
   private containerScaleX = 1;
   private containerScaleY = 1;
 
-  // Talk animation
-  private talking = false;
-  private talkT = 0;
-  private talkDuration = 0;
-  private talkClickIndex = 0;
-  private sylAmps: number[] = [];
-  onTalkEnd: ((phrase: string) => void) | null = null;
-  onTalkStart: ((phrase: string) => void) | null = null;
-  private lastPhrase = '';
-
   constructor(options: MonsterViewOptions) {
     super({
       dynamicProperties: {
@@ -169,60 +159,6 @@ export class MonsterView extends ParticleContainer {
     const h = Math.max(0.01, b.maxY - b.minY);
     const scale = Math.min(boxW / w, boxH / h) * 0.92;
     this.setDisplayScale(scale);
-  }
-
-  get isTalking(): boolean {
-    return this.talking;
-  }
-
-  /**
-   * Unique per-seed talk: open/close jaw over syllables.
-   * Returns the spoken phrase.
-   */
-  talk(phrase: string): string {
-    if (this.talking) return this.lastPhrase;
-    const anim = this.data.anim;
-    this.talking = true;
-    this.talkT = 0;
-    this.talkDuration = anim.talkSyllables / Math.max(0.5, anim.talkRate);
-    this.lastPhrase = phrase;
-    this.talkClickIndex++;
-    // Per-syllable amplitude (deterministic-ish via index + random)
-    this.sylAmps = [];
-    for (let i = 0; i < anim.talkSyllables; i++) {
-      this.sylAmps.push(0.4 + Math.random() * 0.6);
-    }
-    this.onTalkStart?.(phrase);
-    return phrase;
-  }
-
-  /** Ease in-out for syllable envelope. */
-  private easeIO(x: number): number {
-    return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
-  }
-
-  /** Advance talk clock; returns jaw open 0–1. */
-  private updateTalk(dt: number): number {
-    if (!this.talking) return 0;
-    this.talkT += dt;
-    const anim = this.data.anim;
-    const progress = this.talkT / this.talkDuration;
-    if (progress >= 1) {
-      this.talking = false;
-      this.onTalkEnd?.(this.lastPhrase);
-      return 0;
-    }
-
-    const sylIdx = Math.min(this.sylAmps.length - 1, Math.floor(this.talkT * anim.talkRate));
-    const sylPhase = (this.talkT * anim.talkRate) % 1;
-    // Open → close with ease
-    const raw = sylPhase < 0.45 ? sylPhase / 0.45 : 1 - (sylPhase - 0.45) / 0.55;
-    let open = this.easeIO(Math.max(0, Math.min(1, raw))) * (this.sylAmps[sylIdx] ?? 0.7);
-
-    if (anim.jitteriness > 0.6 && sylIdx % 3 === 2) open *= 0.35;
-    else if (anim.heaviness > 0.55) open *= 0.5 + progress * 0.5;
-
-    return open;
   }
 
   /**
@@ -365,27 +301,11 @@ export class MonsterView extends ParticleContainer {
 
     const breath = Math.sin(t * anim.breathFreq) * anim.breathAmp;
     const swayBase = Math.sin(t * anim.swayFreq) * anim.swayAmp;
-    const jaw = this.updateTalk(dt);
-    // Scale talk amp by scaleRef so finer grids still open visibly
-    const sr = this.data.scaleRef || 1;
-    const jawRaw = jaw * anim.talkAmp * cell * Math.max(1, sr * 0.45);
-    const half = cell * 0.5;
-    const jawAmt = half > 0 ? Math.round(jawRaw / half) * half : jawRaw;
-
-    // Body squash in talk rhythm + stronger nod
-    let talkSquash = 0;
-    if (this.talking) {
-      this.rotation += Math.sin(this.talkT * anim.talkRate * Math.PI * 2) * 0.07 * jaw;
-      talkSquash = Math.sin(this.talkT * anim.talkRate * Math.PI * 2) * 0.04 * jaw;
-    }
 
     const bounceSquash = this.bounceActive > 0.01 ? Math.min(0.08, this.bounceActive * 0.35) : 0;
-    this.containerScaleX = turnScaleX * (1 + bounceSquash) * (1 - talkSquash * 0.5);
-    this.containerScaleY = (1 - bounceSquash * 0.9) * (1 + talkSquash);
+    this.containerScaleX = turnScaleX * (1 + bounceSquash);
+    this.containerScaleY = 1 - bounceSquash * 0.9;
     this.scale.set(this.containerScaleX, this.containerScaleY);
-
-    // Squint eyes on loud syllables
-    const talkSquint = this.talking && jaw > 0.65 ? 0.3 * jaw : 0;
 
     for (const { home, sprite, part } of this.live) {
       let x = home.x;
@@ -431,17 +351,6 @@ export class MonsterView extends ParticleContainer {
 
       y += this.bounceActive * (1 - Math.abs(home.x) * 0.3);
 
-      const role = home.mouthRole;
-      let cavityStretch = 1;
-      if (jawAmt > 0 && role) {
-        if (role === 'lower' || role === 'tongue') {
-          y -= jawAmt;
-        } else if (role === 'cavity') {
-          cavityStretch = 1 + jaw * anim.talkAmp * 0.5;
-          y -= jawAmt * 0.5;
-        }
-      }
-
       if (part === 'pupil') {
         let ox = this.pupilOx;
         let oy = this.pupilOy;
@@ -466,12 +375,6 @@ export class MonsterView extends ParticleContainer {
       let scaleYMul = 1;
       if ((part === 'eye' || part === 'pupil' || part === 'outline') && blink > 0) {
         scaleYMul = Math.max(0.12, 1 - blink);
-      }
-      if ((part === 'eye' || part === 'pupil') && talkSquint > 0) {
-        scaleYMul *= 1 - talkSquint;
-      }
-      if (role === 'cavity' && cavityStretch !== 1) {
-        scaleYMul *= cavityStretch;
       }
 
       let alpha = 1;

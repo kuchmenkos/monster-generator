@@ -15,11 +15,8 @@ const box = await canvas.boundingBox();
 if (!box) throw new Error('no canvas');
 await page.mouse.click(box.x + box.width * 0.18, box.y + box.height * 0.32);
 await page.waitForTimeout(1500);
-
-await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
-await page.waitForTimeout(400);
-await page.screenshot({ path: 'debug-mouths-talk.png', animations: 'disabled' });
-console.log('talk ok');
+await page.screenshot({ path: 'debug-mouths-detail.png', animations: 'disabled' });
+console.log('detail ok');
 
 // Detail bar has dislike as second 👎 — click the one in the bar (not the tab)
 const buttons = page.locator('#ui-bar button');

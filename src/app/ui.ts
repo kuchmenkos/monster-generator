@@ -116,28 +116,6 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
   } as CSSStyleDeclaration);
   root.appendChild(nameLabel);
 
-  // Speech bubble
-  const bubble = document.createElement('div');
-  Object.assign(bubble.style, {
-    position: 'absolute',
-    top: '18%',
-    left: '50%',
-    transform: 'translateX(-50%)',
-    background: 'rgba(255,255,255,0.95)',
-    color: '#111',
-    padding: '10px 16px',
-    borderRadius: '16px',
-    fontSize: '16px',
-    fontWeight: '700',
-    zIndex: '15',
-    pointerEvents: 'none',
-    display: 'none',
-    maxWidth: '70%',
-    textAlign: 'center',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-  } as CSSStyleDeclaration);
-  root.appendChild(bubble);
-
   const makeArrow = (label: string, side: 'left' | 'right', onClick: () => void) => {
     const btn = makeBtn(label, onClick);
     btn.style.position = 'absolute';
@@ -198,14 +176,6 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     }, 1600);
   };
 
-  const showSpeech = (text: string) => {
-    bubble.textContent = text;
-    bubble.style.display = 'block';
-  };
-  const hideSpeech = () => {
-    bubble.style.display = 'none';
-  };
-
   const setLiked = (liked: boolean) => {
     likeBtn.textContent = liked ? '♥' : '♡';
     likeBtn.style.color = liked ? '#ff5a7a' : '#f2f2f7';
@@ -259,12 +229,9 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     nameLabel.textContent = opts.name ?? '';
     emptyHint.style.display = !isDetail && opts.emptyHint ? 'block' : 'none';
     emptyHint.textContent = opts.emptyHint ?? '';
-    if (!isDetail) hideSpeech();
 
     if (isDetail) {
-      seedLabel.textContent = opts.seed
-        ? `seed: ${opts.seed} · клік = говорити`
-        : '';
+      seedLabel.textContent = opts.seed ? `seed: ${opts.seed}` : '';
       setLiked(opts.seed ? hasFavorite(opts.seed) : false);
       setDisliked(opts.seed ? hasDislike(opts.seed) : false);
     } else {
@@ -283,8 +250,6 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     setCounts,
     setTab,
     showToast,
-    showSpeech,
-    hideSpeech,
     bar,
     nameLabel,
   };

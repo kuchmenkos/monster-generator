@@ -1,6 +1,6 @@
 import { bboxFill, countDetachedAppendages, uniqueBodyColors } from '../src/core/score';
 import { generateMonster } from '../src/core/monster';
-import { generateMonsterName, generateSpeech } from '../src/core/names';
+import { generateMonsterName } from '../src/core/names';
 
 const seeds = Array.from({ length: 300 }, (_, i) => `v3-${i}-${(i * 19) % 101}`);
 
@@ -70,7 +70,6 @@ for (const seed of seeds) {
     }
   }
 
-  if (!m.anim.talkRate || m.anim.talkAmp < 1.2) throw new Error('weak talkAmp');
   if (!m.scaleRef || m.scaleRef < 2) throw new Error('scaleRef too low');
 }
 
@@ -111,9 +110,6 @@ if (connectedLimbs < seeds.length * 0.92) throw new Error('too many detached lim
 if (richCoat < seeds.length * 0.7) throw new Error('too few coat tones');
 
 const n1 = generateMonsterName('n');
-const s1 = generateSpeech('t', 0);
-const s2 = generateSpeech('t', 0);
 if (n1 !== generateMonsterName('n')) throw new Error('name');
-if (s1 !== s2) throw new Error('speech');
 
 console.log('OK');

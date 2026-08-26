@@ -10,7 +10,7 @@ export type ParticlePart =
   | 'aura'
   | 'fleck';
 
-/** Jaw groups for talk: upper stays, cavity stretches, lower+tongue drop. */
+/** Jaw groups for static mouth layout: upper, cavity, lower, tongue. */
 export type MouthRole = 'upper' | 'cavity' | 'lower' | 'tongue';
 
 export interface Particle {
@@ -33,7 +33,7 @@ export interface Particle {
   row: number;
   /** 0 at body root → 1 at limb tip (sway weighting) */
   tipFactor: number;
-  /** Mouth jaw piece for talk animation */
+  /** Mouth jaw piece for static layout */
   mouthRole?: MouthRole;
   /** Silhouette rim — jiggle allowed; interior stays coherent */
   isRim?: boolean;
@@ -95,12 +95,6 @@ export interface AnimParams {
   heaviness: number;
   /** 0–1: how often pupils look around / body turns */
   curiosity: number;
-  /** Talk animation: syllables per second */
-  talkRate: number;
-  /** Talk animation: number of syllables per utterance */
-  talkSyllables: number;
-  /** Talk animation: jaw open amplitude in cell units */
-  talkAmp: number;
 }
 
 export interface MonsterPalette {

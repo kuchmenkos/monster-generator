@@ -19,11 +19,6 @@ await canvas.click({ position: { x: 200, y: 220 } });
 await page.waitForTimeout(800);
 await page.screenshot({ path: 'debug-mouths-v2-detail.png' });
 
-// Trigger talk
-await canvas.click({ position: { x: 640, y: 450 } });
-await page.waitForTimeout(350);
-await page.screenshot({ path: 'debug-mouths-v2-talk.png' });
-
 // Dislike to test PNG capture centering
 const dislike = page.getByRole('button', { name: /👎/ });
 if (await dislike.count()) {
