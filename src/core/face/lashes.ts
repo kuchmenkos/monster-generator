@@ -41,6 +41,20 @@ function isBody(grid: MonsterGrid, col: number, row: number): boolean {
   return grid.cells.get(cellKey(col, row))?.part === 'body';
 }
 
+/** Lash tucked into a coat pocket reads as the forehead stamp. */
+function coatEmbedded(grid: MonsterGrid, col: number, row: number): boolean {
+  let bodyN = 0;
+  for (const [dc, dr] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    if (grid.cells.get(cellKey(col + dc, row + dr))?.part === 'body') bodyN++;
+  }
+  return bodyN >= 2;
+}
+
 function paintOneLash(
   grid: MonsterGrid,
   rng: Rng,
@@ -66,6 +80,7 @@ function paintOneLash(
         const col = x + flare * L;
         const row = top + L;
         if (isBody(grid, col, row)) continue;
+        if (coatEmbedded(grid, col, row)) continue;
         if (!touchesEyeRim(grid, col, row) && L > 1 && !touchesEyeRim(grid, col, row - 1)) continue;
         paintWithShadow(grid, col, row, base, palette.brow, 'lash', {
           zBoost: 0.056,
@@ -88,6 +103,7 @@ function paintOneLash(
       const x = eye.x + dx;
       const botY = eye.y - 1;
       if (isBody(grid, x, botY)) continue;
+      if (coatEmbedded(grid, x, botY)) continue;
       if (!touchesEyeRim(grid, x, botY) && !touchesEyeRim(grid, x, botY + 1)) continue;
       paintWithShadow(grid, x, botY, base, palette.brow, 'lash', {
         zBoost: 0.056,
