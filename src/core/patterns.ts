@@ -14,7 +14,13 @@ type PatternKind =
   | 'stripes-curved'
   | 'mask'
   | 'bio-glow'
-  | 'dual-gradient';
+  | 'dual-gradient'
+  | 'patches'
+  | 'speckle'
+  | 'zigzag_coat'
+  | 'two_tone'
+  | 'mottled'
+  | 'rim_glow';
 
 function bodyCells(grid: MonsterGrid): GridCell[] {
   return [...grid.cells.values()].filter((c) => c.part === 'body');
@@ -96,10 +102,25 @@ function applyBelly(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void 
 function applySpots(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
   const body = bodyCells(grid);
   if (body.length === 0) return;
-  const count = rng.int(4, 10);
+  // Prefer interior (4 body neighbors) so stamps don't glitter on rim
+  const interior = body.filter((c) => {
+    let n = 0;
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
+      if (nb?.part === 'body') n++;
+    }
+    return n >= 4;
+  });
+  const pool = interior.length >= 4 ? interior : body;
+  const count = rng.int(2, 5);
   for (let i = 0; i < count; i++) {
-    const center = body[rng.int(0, body.length - 1)]!;
-    const radius = rng.int(1, 3);
+    const center = pool[rng.int(0, pool.length - 1)]!;
+    const radius = rng.int(1, 2);
     const tint = rng.chance(0.45) ? palette.accent : rng.chance(0.5) ? palette.accent2 : darken(center.color, 0.22);
     for (const c of body) {
       const d = Math.hypot(c.col - center.col, c.row - center.row);
@@ -230,6 +251,88 @@ function applyBioGlow(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): voi
   }
 }
 
+function applyPatches(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
+  const body = bodyCells(grid);
+  if (body.length === 0) return;
+  const interior = body.filter((c) => {
+    let n = 0;
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
+      if (nb?.part === 'body') n++;
+    }
+    return n >= 4;
+  });
+  const pool = interior.length >= 4 ? interior : body;
+  const patches = rng.int(1, 3);
+  for (let p = 0; p < patches; p++) {
+    const seed = pool[rng.int(0, pool.length - 1)]!;
+    const r = rng.float(2, 4);
+    const tint = rng.chance(0.5) ? palette.accent2 : darken(palette.base, 0.14);
+    for (const c of body) {
+      if (Math.hypot(c.col - seed.col, c.row - seed.row) <= r) c.color = tint;
+    }
+  }
+}
+
+function applySpeckle(grid: MonsterGrid, rng: Rng, _palette: MonsterPalette): void {
+  const body = bodyCells(grid);
+  for (const c of body) {
+    if (rng.chance(0.12)) c.color = darken(c.color, 0.18);
+    else if (rng.chance(0.06)) c.color = lighten(c.color, 0.12);
+  }
+}
+
+function applyZigzagCoat(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
+  const body = bodyCells(grid);
+  if (body.length === 0) return;
+  const period = rng.int(3, 5);
+  for (const c of body) {
+    const zig = c.row + Math.floor(Math.abs(c.col) / 2);
+    if (Math.floor(zig / period) % 2 === 0) c.color = palette.accent;
+  }
+}
+
+function applyTwoTone(grid: MonsterGrid, _rng: Rng, palette: MonsterPalette): void {
+  const body = bodyCells(grid);
+  if (body.length === 0) return;
+  const midC = (Math.min(...body.map((c) => c.col)) + Math.max(...body.map((c) => c.col))) / 2;
+  for (const c of body) {
+    if (c.col >= midC) c.color = lighten(palette.base, 0.1);
+    else c.color = darken(palette.base, 0.08);
+  }
+}
+
+function applyMottled(grid: MonsterGrid, _rng: Rng, palette: MonsterPalette): void {
+  const body = bodyCells(grid);
+  for (const c of body) {
+    const n = Math.sin(c.col * 0.7 + c.row * 0.55) * Math.cos(c.col * 0.35 - c.row * 0.8);
+    if (n > 0.35) c.color = lighten(palette.base, 0.1);
+    else if (n < -0.35) c.color = darken(palette.base, 0.12);
+  }
+}
+
+function applyRimGlow(grid: MonsterGrid, _rng: Rng, palette: MonsterPalette): void {
+  const body = bodyCells(grid);
+  for (const c of body) {
+    let n = 0;
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
+      if (nb?.part === 'body') n++;
+    }
+    if (n < 4) c.color = lighten(palette.accent2, 0.08);
+  }
+}
+
 /**
  * Cel-shaded coat + rich patterns. Outline last so rim stays crisp.
  */
@@ -243,15 +346,20 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
     'belly',
     'belly',
     'spots',
-    'spots',
     'stripes',
     'gradient',
     'rosettes',
     'scales',
     'stripes-curved',
     'mask',
-    'bio-glow',
     'dual-gradient',
+    'mottled',
+    'two_tone',
+    // rarer stamp-like coats
+    'patches',
+    'speckle',
+    'zigzag_coat',
+    'rim_glow',
   ]);
 
   switch (kind) {
@@ -284,6 +392,24 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
       break;
     case 'bio-glow':
       applyBioGlow(grid, rng, palette);
+      break;
+    case 'patches':
+      applyPatches(grid, rng, palette);
+      break;
+    case 'speckle':
+      applySpeckle(grid, rng, palette);
+      break;
+    case 'zigzag_coat':
+      applyZigzagCoat(grid, rng, palette);
+      break;
+    case 'two_tone':
+      applyTwoTone(grid, rng, palette);
+      break;
+    case 'mottled':
+      applyMottled(grid, rng, palette);
+      break;
+    case 'rim_glow':
+      applyRimGlow(grid, rng, palette);
       break;
     default:
       break;

@@ -64,10 +64,22 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     return btn;
   };
 
+  const brand = document.createElement('span');
+  brand.textContent = 'boolala.boo';
+  Object.assign(brand.style, {
+    pointerEvents: 'none',
+    fontSize: '15px',
+    fontWeight: '800',
+    letterSpacing: '0.04em',
+    color: '#f2f2f7',
+    marginRight: '6px',
+    textShadow: '0 1px 8px rgba(0,0,0,0.55)',
+  } as CSSStyleDeclaration);
+
   const tabAll = makeBtn('Всі', () => callbacks.onTab('all'));
   const tabFav = makeBtn('♥ (0)', () => callbacks.onTab('favorites'));
   const tabDis = makeBtn('👎 (0)', () => callbacks.onTab('dislikes'));
-  const addMoreBtn = makeBtn('+4 монстри', callbacks.onAddMore);
+  const addMoreBtn = makeBtn('+4 булалашки', callbacks.onAddMore);
   const backBtn = makeBtn('← Галерея', callbacks.onBack);
   const likeBtn = makeBtn('♡', callbacks.onToggleFavorite);
   const dislikeBtn = makeBtn('👎', callbacks.onToggleDislike);
@@ -84,6 +96,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
   } as CSSStyleDeclaration);
 
   bar.append(
+    brand,
     tabAll,
     tabFav,
     tabDis,
