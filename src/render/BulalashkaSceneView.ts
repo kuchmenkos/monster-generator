@@ -152,21 +152,12 @@ export class BulalashkaSceneView extends Sprite {
   }
 
   setDisplayScale(px: number): void {
-    const span =
-      Math.max(
-        this.data.bounds.maxX - this.data.bounds.minX,
-        this.data.bounds.maxY - this.data.bounds.minY,
-      ) || 1;
-    this.scale.set(px / span);
+    this.scale.set(px / this.rtSize);
   }
 
   fitInto(maxW: number, maxH: number): void {
-    const span =
-      Math.max(
-        this.data.bounds.maxX - this.data.bounds.minX,
-        this.data.bounds.maxY - this.data.bounds.minY,
-      ) || 1;
-    this.scale.set(Math.min(maxW, maxH) / span);
+    const fit = Math.min(maxW, maxH);
+    this.scale.set((fit / this.rtSize) * 0.92);
   }
 
   tick(dt: number): void {

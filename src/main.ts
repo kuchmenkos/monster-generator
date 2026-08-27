@@ -12,6 +12,7 @@ import {
 import { Gallery } from './app/gallery';
 import { createUi, type GalleryTab } from './app/ui';
 import { generateMonster } from './core/monster';
+import { randomSeed } from './core/rng';
 import { BulalashkaSceneView } from './render/BulalashkaSceneView';
 
 type Mode = 'gallery' | 'detail';
@@ -32,6 +33,14 @@ function loadGallerySeeds(): string[] {
 
 function saveGallerySeeds(seeds: string[]): void {
   sessionStorage.setItem(GALLERY_SEEDS_KEY, JSON.stringify(seeds));
+}
+
+/** Persisted seeds, or a starter grid when the gallery is empty. */
+function initialGallerySeeds(): string[] {
+  const saved = loadGallerySeeds();
+  if (saved.length > 0) return saved;
+  const count = Math.max(6, Math.min(9, Math.ceil(12 / Math.max(3, Math.floor(window.innerWidth / 150)))));
+  return Array.from({ length: count }, () => randomSeed(8));
 }
 
 function readSeedFromUrl(): string | null {
@@ -74,6 +83,12 @@ async function main() {
   const cellSize = Math.min(150, Math.floor((window.innerWidth - 24) / cols));
 
   const allSeeds: string[] = [];
+  let showGalleryError: (msg: string) => void = (msg) => console.error(msg);
+
+  const initialSeeds = initialGallerySeeds();
+  if (loadGallerySeeds().length === 0 && initialSeeds.length > 0) {
+    saveGallerySeeds(initialSeeds);
+  }
 
   const emptyHintFor = (tab: GalleryTab): string | undefined => {
     if (tab === 'all' && gallery.seedList.length === 0) {
@@ -169,8 +184,12 @@ async function main() {
     rows,
     cellSize,
     padding: 12,
-    seeds: loadGallerySeeds(),
+    seeds: initialSeeds,
     onSelect: (seed) => showDetail(seed),
+    onError: (seed, err) => {
+      console.error(`Gallery render failed for ${seed}`, err);
+      showGalleryError('Не вдалося показати монстра');
+    },
   });
   allSeeds.push(...gallery.seedList);
 
@@ -234,6 +253,7 @@ async function main() {
     onNext: () => navigate(1),
     onTab: (tab) => switchTab(tab),
   });
+  showGalleryError = (msg) => ui.showToast(msg);
 
   const layout = () => {
     const w = app.screen.width;

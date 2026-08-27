@@ -11,6 +11,7 @@ export interface GalleryOptions {
   padding: number;
   seeds?: string[];
   onSelect?: (seed: string, data: MonsterData) => void;
+  onError?: (seed: string, error: unknown) => void;
 }
 
 /**
@@ -26,6 +27,7 @@ export class Gallery extends Container {
   private viewTop = 0;
   private viewHeight = 800;
   private frame = 0;
+  private readonly onError?: (seed: string, error: unknown) => void;
 
   constructor(options: GalleryOptions) {
     super();
@@ -33,6 +35,7 @@ export class Gallery extends Container {
     this.cellSize = options.cellSize;
     this.padding = options.padding;
     this.onSelect = options.onSelect ?? null;
+    this.onError = options.onError;
     this.eventMode = 'static';
 
     const seeds = options.seeds ?? [];
@@ -61,25 +64,31 @@ export class Gallery extends Container {
     view.y = this.padding + row * this.cellSize + this.cellSize * 0.5;
   }
 
-  private createView(seed: string, index: number): BulalashkaSceneView {
-    const data = generateMonster(seed);
-    if (!data.meshBundle || !data.blobs) {
-      throw new Error(`Missing meshBundle for ${seed}`);
+  private createView(seed: string, index: number): BulalashkaSceneView | null {
+    try {
+      const data = generateMonster(seed);
+      if (!data.meshBundle || !data.blobs) {
+        throw new Error(`Missing meshBundle for ${seed}`);
+      }
+      const view = new BulalashkaSceneView({
+        data,
+        blobs: data.blobs,
+        allowRotate: false,
+        size: 256,
+        subdivisions: 2,
+      });
+      this.placeView(view, index);
+      view.on('pointertap', () => {
+        this.onSelect?.(seed, data);
+      });
+      this.addChild(view);
+      this.views.push(view);
+      return view;
+    } catch (err) {
+      console.error(`Failed to create gallery view for ${seed}`, err);
+      this.onError?.(seed, err);
+      return null;
     }
-    const view = new BulalashkaSceneView({
-      data,
-      blobs: data.blobs,
-      allowRotate: false,
-      size: 256,
-      subdivisions: 2,
-    });
-    this.placeView(view, index);
-    view.on('pointertap', () => {
-      this.onSelect?.(seed, data);
-    });
-    this.addChild(view);
-    this.views.push(view);
-    return view;
   }
 
   rebuild(seeds: string[]): void {
@@ -101,7 +110,9 @@ export class Gallery extends Container {
     for (let i = 0; i < count; i++) {
       const seed = randomSeed(8);
       this.seeds.push(seed);
-      this.createView(seed, start + i);
+      if (!this.createView(seed, start + i)) {
+        this.seeds.pop();
+      }
     }
     this.updateCulling();
   }
