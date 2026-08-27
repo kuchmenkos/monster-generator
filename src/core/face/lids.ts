@@ -1,3 +1,4 @@
+import { darken } from '../palette';
 import type { Rng } from '../rng';
 import type { GridCell, MonsterGrid, MonsterPalette } from '../types';
 import { nearestBodyColor, putCell } from './shading';
@@ -47,7 +48,7 @@ function paintOneLid(
       const row = eye.y + eye.h - 1 - dy;
       const cell = grid.cells.get(`${col},${row}`);
       if (cell?.part !== 'eye') continue;
-      const tint = nearestBodyColor(grid, col, row + 1, palette.shadow);
+      const tint = darken(nearestBodyColor(grid, col, row + 1, palette.shadow), 0.18);
       putCell(grid, col, row, base, tint, 'eyelid', {
         zBoost: 0.052,
         lidRole: 'upper',
@@ -63,7 +64,7 @@ function paintOneLid(
       const row = eye.y;
       const cell = grid.cells.get(`${col},${row}`);
       if (cell?.part !== 'eye') continue;
-      const tint = nearestBodyColor(grid, col, row - 1, palette.shadow);
+      const tint = darken(nearestBodyColor(grid, col, row - 1, palette.shadow), 0.18);
       putCell(grid, col, row, base, tint, 'eyelid', {
         zBoost: 0.051,
         lidRole: 'lower',

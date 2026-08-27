@@ -1,5 +1,5 @@
 import type { MonsterGrid, Particle, ParticlePart } from '../types';
-import { nearBody } from './shading';
+import { longestRun, nearBody } from './shading';
 
 const ORTHO: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
@@ -101,7 +101,7 @@ export function countFloatingBrow(src: MonsterGrid | Particle[]): number {
   let n = 0;
   for (const e of entries) {
     if (e.part !== 'brow') continue;
-    if (chebyshevToNearest(e.col, e.row, anchors) >= 3) n++;
+    if (chebyshevToNearest(e.col, e.row, anchors) >= 4) n++;
   }
   return n;
 }
@@ -125,22 +125,15 @@ export function countLashInEye(src: MonsterGrid | Particle[]): number {
   return n;
 }
 
-/** Hair sitting on eye/pupil — shouldn't happen after protected write; count as 0 always post-fix.
- *  Detect via hair with 4 ortho eye neighbors (impossible for rim hair) — rare.
- *  Better: hair key that has eye/pupil as same cell can't exist. Use: hair fully enclosed by eye. */
+/** Hair Chebyshev-adjacent to eye/pupil — temple curtain that reads as the left-eye smear. */
 export function countHairOverEye(src: MonsterGrid | Particle[]): number {
   const entries = toEntries(src);
-  const map = byKeyMap(entries);
+  const eyes = entries.filter((e) => isEyeish(e.part) || e.part === 'eyelid');
+  if (eyes.length === 0) return 0;
   let n = 0;
   for (const e of entries) {
     if (e.part !== 'hair') continue;
-    let eyeN = 0;
-    for (const [dc, dr] of ORTHO) {
-      const nb = map.get(`${e.col + dc},${e.row + dr}`);
-      if (nb && isEyeish(nb.part)) eyeN++;
-    }
-    // Interior of eye: 4 ortho eye neighbors
-    if (eyeN >= 4) n++;
+    if (chebyshevToNearest(e.col, e.row, eyes) <= 1) n++;
   }
   return n;
 }
@@ -167,8 +160,7 @@ export function countMustacheOnMouth(src: MonsterGrid | Particle[]): number {
       const nb = map.get(`${e.col + dc},${e.row + dr}`);
       if (nb && (nb.part === 'mouth' || nb.part === 'tooth')) mouthN++;
     }
-    if (e.part === 'mustache' && mouthN >= 2) n++;
-    // brow deep in mouth (mustache painted as brow historically)
+    if (e.part === 'mustache' && mouthN >= 3) n++;
     if (e.part === 'brow' && mouthN >= 3) n++;
   }
   return n;
@@ -261,17 +253,31 @@ export function countOrphanLashEarOnGrid(grid: MonsterGrid): number {
  */
 export function countSilhouetteLeak(src: MonsterGrid | Particle[]): number {
   const entries = toEntries(src);
-  const span = new Map<number, { minC: number; maxC: number }>();
+  const occupied: ReadonlySet<ParticlePart> = new Set([
+    'body',
+    'eye',
+    'pupil',
+    'outline',
+    'eyelid',
+    'brow',
+    'mouth',
+    'tooth',
+    'nose',
+    'mustache',
+  ]);
+  const colsByRow = new Map<number, number[]>();
   for (const e of entries) {
-    if (e.part !== 'body') continue;
-    const s = span.get(e.row);
-    if (!s) span.set(e.row, { minC: e.col, maxC: e.col });
-    else {
-      s.minC = Math.min(s.minC, e.col);
-      s.maxC = Math.max(s.maxC, e.col);
-    }
+    if (!occupied.has(e.part)) continue;
+    const arr = colsByRow.get(e.row);
+    if (arr) arr.push(e.col);
+    else colsByRow.set(e.row, [e.col]);
   }
-  const leakParts: ReadonlySet<ParticlePart> = new Set(['eye', 'outline', 'eyelid', 'brow']);
+  const span = new Map<number, { minC: number; maxC: number }>();
+  for (const [row, cols] of colsByRow) {
+    const s = longestRun(cols);
+    if (s) span.set(row, s);
+  }
+  const leakParts: ReadonlySet<ParticlePart> = new Set(['outline']);
   let n = 0;
   for (const e of entries) {
     if (!leakParts.has(e.part)) continue;

@@ -25,6 +25,8 @@ const NO_AUTO_SHADOW: ReadonlySet<ParticlePart> = new Set([
   'brow',
   'lash',
   'mustache',
+  'freckle',
+  'nose',
 ]);
 
 export interface PaintOpts {
@@ -53,20 +55,48 @@ export function bodyOnly(grid: MonsterGrid): GridCell[] {
   return [...grid.cells.values()].filter((c) => c.part === 'body');
 }
 
-/** Min/max body columns on a single row, or null if the row has no body. */
+/** Min/max of the longest contiguous body run on a row (ignore detached lumps). */
 export function bodySpanAtRow(
   grid: MonsterGrid,
   row: number,
 ): { minC: number; maxC: number } | null {
-  let minC = Infinity;
-  let maxC = -Infinity;
+  const cols: number[] = [];
   for (const c of grid.cells.values()) {
-    if (c.part !== 'body' || c.row !== row) continue;
-    if (c.col < minC) minC = c.col;
-    if (c.col > maxC) maxC = c.col;
+    if (c.part === 'body' && c.row === row) cols.push(c.col);
   }
-  if (!Number.isFinite(minC)) return null;
-  return { minC, maxC };
+  return longestRun(cols);
+}
+
+/** Longest consecutive integer run — primary silhouette, not stray lumps. */
+export function longestRun(cols: number[]): { minC: number; maxC: number } | null {
+  if (cols.length === 0) return null;
+  const sorted = [...cols].sort((a, b) => a - b);
+  let bestLo = sorted[0]!;
+  let bestHi = sorted[0]!;
+  let bestLen = 1;
+  let lo = sorted[0]!;
+  let prev = sorted[0]!;
+  for (let i = 1; i < sorted.length; i++) {
+    const v = sorted[i]!;
+    if (v <= prev + 1) {
+      prev = v;
+      continue;
+    }
+    const len = prev - lo + 1;
+    if (len > bestLen) {
+      bestLen = len;
+      bestLo = lo;
+      bestHi = prev;
+    }
+    lo = v;
+    prev = v;
+  }
+  const len = prev - lo + 1;
+  if (len > bestLen) {
+    bestLo = lo;
+    bestHi = prev;
+  }
+  return { minC: bestLo, maxC: bestHi };
 }
 
 /** Tightest body span across a row band (intersection) — used to clamp eyes on tapers. */
@@ -175,8 +205,17 @@ export function putCell(
   const key = cellKey(col, row);
   const existing = grid.cells.get(key);
   if (SILHOUETTE_CLIPPED.has(part)) {
-    // Never paint eye/outline/lid/brow into empty space (hanging left-eye smear)
+    // Never paint eye/outline/lid/brow into void or onto horns (left-eye smear)
     if (!existing || existing.part === 'aura') return;
+    if (
+      existing.part === 'appendage' ||
+      existing.part === 'fleck' ||
+      existing.part === 'ear' ||
+      existing.part === 'hair' ||
+      existing.part === 'lash'
+    ) {
+      return;
+    }
   }
   if (existing && PROTECTED_PARTS.has(existing.part)) {
     const allow = opts.allowOverwrite ?? [];
@@ -234,11 +273,21 @@ export function paintWithShadow(
 
   putCell(grid, col, row, base, fillColor, part, opts);
 
-  // Hardcoded +1 shadow lands on the left eye for left-side ears — skip for face hair-likes
+  // Hardcoded +1 shadow lands on the left eye for left-side features — skip hair-likes
   if (opts.shadow && !NO_AUTO_SHADOW.has(part)) {
     const sc = col + 1;
     const sr = row - 1;
-    if (!grid.cells.has(cellKey(sc, sr)) || grid.cells.get(cellKey(sc, sr))?.part === 'body') {
+    const shadowTarget = grid.cells.get(cellKey(sc, sr));
+    const hitsEye =
+      !!shadowTarget &&
+      (shadowTarget.part === 'eye' ||
+        shadowTarget.part === 'pupil' ||
+        shadowTarget.part === 'eyelid' ||
+        shadowTarget.part === 'outline');
+    if (
+      !hitsEye &&
+      (!shadowTarget || shadowTarget.part === 'body')
+    ) {
       putCell(grid, sc, sr, base, darken(fillColor, 0.22), part, {
         ...opts,
         zBoost: (opts.zBoost ?? 0.02) - 0.004,

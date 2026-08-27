@@ -1,5 +1,6 @@
 import type { MonsterGrid, Particle, ParticlePart } from '../types';
 import { cellKey } from '../types';
+import { longestRun } from './shading';
 
 const FACE_PARTS: ReadonlySet<ParticlePart> = new Set([
   'eye',
@@ -91,7 +92,49 @@ export function pruneFloatingFeatures(grid: MonsterGrid): number {
   return removed;
 }
 
-/** Drop flecks not within 1 ortho step of body/hair (silhouette debris). */
+/** Drop eye/outline/lid/brow cells that sit on a detached run (left-eye smear shards). */
+export function pruneOffSilhouetteFace(grid: MonsterGrid): number {
+  const occupied: ParticlePart[] = [
+    'body',
+    'eye',
+    'pupil',
+    'outline',
+    'eyelid',
+    'brow',
+    'mouth',
+    'tooth',
+    'nose',
+    'mustache',
+  ];
+  const occSet = new Set<ParticlePart>(occupied);
+  const colsByRow = new Map<number, number[]>();
+  for (const c of grid.cells.values()) {
+    if (!occSet.has(c.part)) continue;
+    const arr = colsByRow.get(c.row);
+    if (arr) arr.push(c.col);
+    else colsByRow.set(c.row, [c.col]);
+  }
+  const span = new Map<number, { minC: number; maxC: number }>();
+  for (const [row, cols] of colsByRow) {
+    const s = longestRun(cols);
+    if (s) span.set(row, s);
+  }
+  const clip = new Set<ParticlePart>(['outline']);
+  let removed = 0;
+  for (const [k, c] of [...grid.cells.entries()]) {
+    if (!clip.has(c.part)) continue;
+    let ok = false;
+    for (const dr of [-1, 0, 1] as const) {
+      const s = span.get(c.row + dr);
+      if (s && c.col >= s.minC - 1 && c.col <= s.maxC + 1) {
+        ok = true;
+        break;
+      }
+    }
+    if (!ok && grid.cells.delete(k)) removed++;
+  }
+  return removed;
+}
 export function pruneOrphanFlecks(grid: MonsterGrid): number {
   let removed = 0;
   for (const [k, c] of [...grid.cells.entries()]) {

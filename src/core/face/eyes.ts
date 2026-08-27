@@ -53,6 +53,9 @@ export function paintEyeShaped(
   fillSclera();
   // Repair: any outline sandwiched by eye cells → sclera (kills lattice)
   repairOutlineLattice(grid, originCol, originRow, w, h, palette, shape, base, faceSide);
+  // Silhouette-edge rim: when the exterior cell is void, darken the mask-edge
+  // so the left eye isn't a white rectangle flush against a hair/body slab
+  paintInnerRimOnVoid(grid, originCol, originRow, mask, base, palette.outline, faceSide);
 
   if (irisColor !== undefined && w >= 4 && h >= 4 && shape !== 'void') {
     const icx = Math.floor(w / 2);
@@ -200,5 +203,42 @@ function repairOutlineLattice(
         });
       }
     }
+  }
+}
+
+/** Darken mask-edge sclera whose exterior neighbor is void (silhouette-flush left eye). */
+function paintInnerRimOnVoid(
+  grid: MonsterGrid,
+  originCol: number,
+  originRow: number,
+  mask: Set<string>,
+  base: GridCell,
+  outlineColor: number,
+  faceSide: -1 | 1 | 0,
+): void {
+  const ORTHO = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
+  for (const key of mask) {
+    const [xs, ys] = key.split(',').map(Number) as [number, number];
+    const col = originCol + xs;
+    const row = originRow + ys;
+    const cell = grid.cells.get(cellKey(col, row));
+    if (!cell || cell.part !== 'eye') continue;
+    let voidSide = false;
+    let eyeN = 0;
+    for (const [dx, dy] of ORTHO) {
+      const nb = grid.cells.get(cellKey(col + dx, row + dy));
+      if (!nb || nb.part === 'aura') voidSide = true;
+      else if (nb.part === 'eye' || nb.part === 'pupil') eyeN++;
+    }
+    if (!voidSide || eyeN >= 3) continue;
+    putCell(grid, col, row, base, outlineColor, 'outline', {
+      zBoost: 0.035,
+      faceSide: faceSide === 0 ? undefined : faceSide,
+    });
   }
 }

@@ -622,7 +622,7 @@ export function gridToParticles(grid: MonsterGrid) {
     hairStrand: c.hairStrand,
     lidRole: c.lidRole,
   }));
-  particles.sort((a, b) => a.z - b.z || partDrawOrder(a.part) - partDrawOrder(b.part));
+  particles.sort((a, b) => partDrawOrder(a.part) - partDrawOrder(b.part) || a.z - b.z);
   return particles;
 }
 

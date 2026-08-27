@@ -176,7 +176,7 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
         hairStyle: rng.chance(0.92) ? pickHair(rng) : null,
         mustacheStyle: pickMustache(rng, 0.28),
         doBrows: true,
-        doLids: rng.chance(0.85),
+        doLids: rng.chance(0.35),
         doAccents: rng.chance(0.45),
         weird: false,
       };

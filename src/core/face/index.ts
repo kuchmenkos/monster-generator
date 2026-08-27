@@ -4,6 +4,7 @@ export {
   countFloatingFaceParticles,
   enforceParticleBudget,
   pruneFloatingFeatures,
+  pruneOffSilhouetteFace,
   pruneOrphanFlecks,
   stripBottomAppendages,
   stripFloatingFaceParticles,

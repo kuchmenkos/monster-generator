@@ -5,6 +5,46 @@ import { cellKey } from '../types';
 import { putCell } from './shading';
 import type { HairStyle } from './types';
 
+/** Axis-aligned pad around eyes — hair here reads as the left-eye smear. */
+interface EyeKeepout {
+  minC: number;
+  maxC: number;
+  minR: number;
+  maxR: number;
+}
+
+function faceKeepout(grid: MonsterGrid): EyeKeepout | null {
+  let minC = Infinity;
+  let maxC = -Infinity;
+  let minR = Infinity;
+  let maxR = -Infinity;
+  let found = false;
+  for (const c of grid.cells.values()) {
+    if (
+      c.part !== 'eye' &&
+      c.part !== 'pupil' &&
+      c.part !== 'eyelid' &&
+      c.part !== 'outline' &&
+      c.part !== 'brow'
+    ) {
+      continue;
+    }
+    found = true;
+    minC = Math.min(minC, c.col);
+    maxC = Math.max(maxC, c.col);
+    minR = Math.min(minR, c.row);
+    maxR = Math.max(maxR, c.row);
+  }
+  if (!found) return null;
+  return { minC: minC - 2, maxC: maxC + 2, minR: minR - 1, maxR: maxR + 1 };
+}
+
+function inKeepout(k: EyeKeepout | null, _col: number, row: number): boolean {
+  if (!k) return false;
+  // Entire eye-band rows: temple/curtain hair here is the left-eye rectangle
+  return row >= k.minR && row <= k.maxR;
+}
+
 /** Head hair — crown cap + thick strands for readable shevelura. */
 export function paintHair(
   grid: MonsterGrid,
@@ -20,8 +60,18 @@ export function paintHair(
   const minC = Math.min(...body.map((c) => c.col));
   const maxC = Math.max(...body.map((c) => c.col));
   const h = maxR - minR;
-  const crownLo = minR + Math.floor(h * 0.62);
-  const crown = body.filter((c) => c.row >= crownLo);
+  const keepout = faceKeepout(grid);
+  // Crown is strictly above the eye/brow band — never the temple or inter-eye gap
+  const crownLo = keepout
+    ? Math.max(keepout.maxR + 1, minR + Math.floor(h * 0.72))
+    : minR + Math.floor(h * 0.72);
+  let crown = body.filter((c) => c.row >= crownLo && !inKeepout(keepout, c.col, c.row));
+  if (crown.length < 3) {
+    crown = body.filter((c) => c.row >= maxR - 1 && !inKeepout(keepout, c.col, c.row));
+  }
+  if (crown.length < 3) {
+    crown = body.filter((c) => c.row >= maxR - 1);
+  }
   if (crown.length < 3) return;
 
   const midC = Math.round((minC + maxC) / 2);
@@ -31,7 +81,7 @@ export function paintHair(
   const color = palette.hair;
   const tipColor = lighten(palette.hair, 0.12);
 
-  // Solid crown cap (2–3 rows) — skip eye/pupil/mouth via paintHairCell
+  // Solid crown cap (2–3 rows) growing up off the scalp — skip face keepout
   if (style !== 'bald_patch') {
     const capRows = rng.int(2, 3);
     for (const c of crown) {
@@ -44,6 +94,7 @@ export function paintHair(
           dy === capRows ? tipColor : color,
           dy / (capRows + 2),
           0,
+          keepout,
           () => painted++,
         );
       }
@@ -53,7 +104,18 @@ export function paintHair(
   if (style === 'bald_patch') {
     const ring = crown.filter((c) => c.col <= minC + 2 || c.col >= maxC - 2).slice(0, 10);
     for (let i = 0; i < ring.length; i++) {
-      growStrand(grid, rng, ring[i]!, color, tipColor, rng.int(2, 4), i, budget, () => painted++);
+      growStrand(
+        grid,
+        rng,
+        ring[i]!,
+        color,
+        tipColor,
+        rng.int(2, 4),
+        i,
+        budget,
+        keepout,
+        () => painted++,
+      );
     }
     return;
   }
@@ -99,13 +161,13 @@ export function paintHair(
             : rng.int(4, 8);
 
     if (style === 'braid') {
-      growBraid(grid, rng, anchor, color, tipColor, len, s, budget, () => painted++);
+      growBraid(grid, rng, anchor, color, tipColor, len, s, budget, keepout, () => painted++);
     } else if (style === 'spikes') {
-      growSpike(grid, rng, anchor, color, tipColor, len, s, () => painted++);
+      growSpike(grid, rng, anchor, color, tipColor, len, s, keepout, () => painted++);
     } else if (style === 'afro_puff') {
-      growPuff(grid, rng, anchor, color, tipColor, s, () => painted++);
+      growPuff(grid, rng, anchor, color, tipColor, s, keepout, () => painted++);
     } else {
-      growStrand(grid, rng, anchor, color, tipColor, len, s, budget, () => painted++);
+      growStrand(grid, rng, anchor, color, tipColor, len, s, budget, keepout, () => painted++);
     }
   }
 }
@@ -118,8 +180,10 @@ function paintHairCell(
   color: number,
   tip: number,
   strandId: number,
+  keepout: EyeKeepout | null,
   onPaint: () => void,
 ): void {
+  if (inKeepout(keepout, col, row)) return;
   const existing = grid.cells.get(cellKey(col, row));
   if (
     existing &&
@@ -127,9 +191,27 @@ function paintHairCell(
       existing.part === 'pupil' ||
       existing.part === 'mouth' ||
       existing.part === 'tooth' ||
-      existing.part === 'eyelid')
+      existing.part === 'eyelid' ||
+      existing.part === 'brow' ||
+      existing.part === 'outline' ||
+      existing.part === 'ear' ||
+      existing.part === 'lash')
   ) {
     return;
+  }
+  // Don't sit next to the eye — particle bleed reads as a left-eye smear
+  for (const [dc, dr] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [-1, 1],
+    [1, -1],
+    [-1, -1],
+  ] as const) {
+    const nb = grid.cells.get(cellKey(col + dc, row + dr));
+    if (nb && (nb.part === 'eye' || nb.part === 'pupil' || nb.part === 'eyelid')) return;
   }
   // Soft body contact for off-crown tips
   if (!existing || existing.part !== 'hair') {
@@ -171,6 +253,7 @@ function growStrand(
   len: number,
   strandId: number,
   budget: number,
+  keepout: EyeKeepout | null,
   onPaint: () => void,
 ): void {
   let col = start.col;
@@ -187,15 +270,19 @@ function growStrand(
     ] as const);
     col += step[0];
     row += step[1];
+    if (inKeepout(keepout, col, row)) {
+      row += 1;
+      continue;
+    }
     const existing = grid.cells.get(cellKey(col, row));
     if (existing && existing.part === 'body') {
       col += outDir;
     }
     const tip = i / len;
     const c = tip > 0.7 ? tipColor : color;
-    paintHairCell(grid, col, row, start, c, tip, strandId, onPaint);
+    paintHairCell(grid, col, row, start, c, tip, strandId, keepout, onPaint);
     // Width-2 strand core
-    paintHairCell(grid, col + outDir, row, start, c, tip, strandId, onPaint);
+    paintHairCell(grid, col + outDir, row, start, c, tip, strandId, keepout, onPaint);
   }
 }
 
@@ -207,13 +294,14 @@ function growSpike(
   tipColor: number,
   len: number,
   strandId: number,
+  keepout: EyeKeepout | null,
   onPaint: () => void,
 ): void {
   for (let i = 1; i <= len; i++) {
     const tip = i / len;
     const c = tip > 0.7 ? tipColor : color;
-    paintHairCell(grid, start.col, start.row + i, start, c, tip, strandId, onPaint);
-    paintHairCell(grid, start.col + 1, start.row + i, start, c, tip, strandId, onPaint);
+    paintHairCell(grid, start.col, start.row + i, start, c, tip, strandId, keepout, onPaint);
+    paintHairCell(grid, start.col + 1, start.row + i, start, c, tip, strandId, keepout, onPaint);
   }
 }
 
@@ -224,6 +312,7 @@ function growPuff(
   color: number,
   tipColor: number,
   strandId: number,
+  keepout: EyeKeepout | null,
   onPaint: () => void,
 ): void {
   for (const [dx, dy] of [
@@ -248,6 +337,7 @@ function growPuff(
       dy > 1 ? tipColor : color,
       0.4 + dy * 0.15,
       strandId,
+      keepout,
       onPaint,
     );
   }
@@ -262,6 +352,7 @@ function growBraid(
   len: number,
   strandId: number,
   budget: number,
+  keepout: EyeKeepout | null,
   onPaint: () => void,
 ): void {
   let col = start.col;
@@ -269,10 +360,11 @@ function growBraid(
   const side = strandId % 2 === 0 ? -1 : 1;
   for (let i = 1; i <= len && i <= budget; i++) {
     col += side * (i % 2 === 0 ? 1 : 0);
-    row -= 1;
+    // Grow up off the scalp — never down into the eye band
+    row += 1;
     const tip = i / len;
     const c = tip > 0.75 ? tipColor : darken(color, tip * 0.1);
-    paintHairCell(grid, col, row, start, c, tip, strandId, onPaint);
-    paintHairCell(grid, col + side, row, start, c, tip, strandId, onPaint);
+    paintHairCell(grid, col, row, start, c, tip, strandId, keepout, onPaint);
+    paintHairCell(grid, col + side, row, start, c, tip, strandId, keepout, onPaint);
   }
 }
