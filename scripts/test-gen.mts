@@ -37,6 +37,10 @@ let withFront = 0;
 let noAppendages = 0;
 let pupilRanged = 0;
 let pupilTotal = 0;
+let volEyeCountSum = 0;
+let volSocketDepthSum = 0;
+let volSilClipSum = 0;
+let volEyeMonsters = 0;
 let fillSum = 0;
 let frontFillSum = 0;
 let genMsSum = 0;
@@ -91,6 +95,17 @@ for (const seed of seeds) {
   pupilTotal += pupils.length;
   pupilRanged += pupils.filter((p) => p.pupilRange && p.pupilRange.x > 0).length;
 
+  if (m.volumetricEyes) {
+    volEyeMonsters++;
+    volEyeCountSum += m.volumetricEyes.metrics.eyeCount;
+    volSocketDepthSum += m.volumetricEyes.metrics.socketDepth;
+    volSilClipSum += m.volumetricEyes.metrics.silhouetteClip;
+    if (m.volumetricEyes.metrics.eyeCount < 1) throw new Error(`no volumetric eyes on ${seed}`);
+    if (m.volumetricEyes.metrics.socketDepth < 0.01) throw new Error(`socket too shallow on ${seed}`);
+  } else {
+    throw new Error(`missing volumetricEyes on ${seed}`);
+  }
+
   if (mouths.length > 0) {
     withMouth++;
     if (mouths.some((p) => p.mouthRole === 'cavity')) withCavity++;
@@ -141,6 +156,17 @@ console.log('mouths', withMouth, 'cavity', withCavity, 'butt', withButt, 'front/
 console.log('noAppendages', noAppendages, 'richCoat', richCoat);
 console.log('archetypes', archetypes, 'buttTypes', buttTypes);
 console.log('deterministic', same);
+console.log(
+  'volumetricEyes',
+  'n=',
+  volEyeMonsters,
+  'avgCount=',
+  (volEyeCountSum / Math.max(1, volEyeMonsters)).toFixed(2),
+  'avgSocket=',
+  (volSocketDepthSum / Math.max(1, volEyeMonsters)).toFixed(4),
+  'avgSilClip=',
+  (volSilClipSum / Math.max(1, volEyeMonsters)).toFixed(4),
+);
 
 if (!same) throw new Error('determinism failed');
 if (noAppendages < seeds.length) throw new Error('appendages present');
@@ -155,6 +181,7 @@ if (minSideFacing < 200) throw new Error(`min side facing too low: ${minSideFaci
 if (maxParticles > 4500) throw new Error(`max particles too high: ${maxParticles}`);
 if (avgMs > 350) throw new Error(`gen too slow: ${avgMs}ms`);
 if (richCoat < seeds.length * 0.65) throw new Error('too few coat tones');
+if (volEyeMonsters < seeds.length) throw new Error('missing volumetric eyes bundle');
 
 const n1 = generateMonsterName('n');
 if (n1 !== generateMonsterName('n')) throw new Error('name');

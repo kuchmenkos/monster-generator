@@ -1,6 +1,7 @@
 import { applyButtFeatures } from './butt';
 import { createProceduralBulalashka } from './bulalashka';
-import { applyFeatures } from './features';
+import { buildVolumetricEyeBundle } from './eyes';
+import { applyMouthFeatures, computeFaceLayout } from './features';
 import { buildFeatureMasks } from './grid';
 import { generateMonsterName } from './names';
 import { generatePalette } from './palette';
@@ -68,10 +69,23 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
   }
 
   buildFeatureMasks(grid);
-
   applyGroundShadow(grid);
   applyPatterns(rng, grid, palette);
-  applyFeatures(rng, grid, palette, bodyArchetype);
+
+  const faceLayout = computeFaceLayout(rng, grid);
+  const mouthFloorY = faceLayout?.mouthFloorY ?? -0.05;
+  if (faceLayout) {
+    applyMouthFeatures(rng, grid, palette, faceLayout);
+  }
+
+  const volumetricEyes = buildVolumetricEyeBundle(
+    rng,
+    blobs,
+    bodyArchetype,
+    variantSeed,
+    mouthFloorY,
+  );
+
   applyButtFeatures(rng, grid, palette, buttArchetype);
 
   const particles = gridToParticles(grid);
@@ -95,6 +109,8 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
     cellSize: grid.cell,
     scaleRef: grid.scaleRef,
     bounds: computeBounds(particles),
+    volumetricEyes,
+    blobs,
   };
 }
 

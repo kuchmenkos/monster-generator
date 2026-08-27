@@ -172,6 +172,66 @@ export interface Blob {
   kind: 'body' | 'appendage';
 }
 
+/** Eye arrangement on the face plane. */
+export type EyeLayout = 'row' | 'ring' | 'cluster' | 'column' | 'scatter';
+
+/** Volumetric eye geometry style (HEADDDS Hx). */
+export type EyeStyle = 'ball' | 'cluster' | 'hole';
+
+export type PupilShape = 'round' | 'slit' | 'cross' | 'goat';
+
+/** One eye slot after layout + solver. */
+export interface EyePlan {
+  x: number;
+  y: number;
+  size: number;
+  rx: number;
+  ry: number;
+  bulge: number;
+  stand: number;
+  pupilSize: number;
+}
+
+export interface BulalashkaSkullParams {
+  boxiness: number;
+  lumpiness: number;
+  jawDrop: number;
+  scale: number;
+}
+
+export interface BulalashkaEyeParams {
+  eyeCount: number;
+  eyeLayout: EyeLayout;
+  eyeStyle: EyeStyle;
+  eyeSize: number;
+  eyeSpread: number;
+  eyeY: number;
+  eyeBulge: number;
+  eyeLid: number;
+  eyeJitter: number;
+  pupilShape: PupilShape;
+}
+
+/** Quality metrics for test-gen / scorer. */
+export interface VolumetricEyeMetrics {
+  eyeCount: number;
+  avgBulge: number;
+  socketDepth: number;
+  silhouetteClip: number;
+}
+
+/** Serializable bundle for Three.js detail renderer. */
+export interface VolumetricEyeBundle {
+  params: BulalashkaEyeParams;
+  skullParams: BulalashkaSkullParams;
+  plans: EyePlan[];
+  metrics: VolumetricEyeMetrics;
+  /** Skull-space floor — eyes stay above mouth */
+  mouthFloorY: number;
+  /** Candidate variant seed for deterministic rebuild */
+  variantSeed: string;
+}
+
 export interface MonsterData {
   seed: string;
   /** Deterministic silly Ukrainian name from seed */
@@ -189,6 +249,10 @@ export interface MonsterData {
   scaleRef: number;
   /** Bounding box in local particle space (pre-scale) */
   bounds: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number };
+  /** HEADDDS-style mesh eyes — detail view only */
+  volumetricEyes?: VolumetricEyeBundle;
+  /** Procedural blob set for mesh skull (same seed variant) */
+  blobs?: Blob[];
 }
 
 /** Legacy flat grid key (single surface). */

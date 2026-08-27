@@ -170,8 +170,13 @@ export function scoreBulalashka(data: MonsterData): number {
 
   const eyes = data.particles.filter((p) => p.part === 'eye');
   const mouths = data.particles.filter((p) => p.part === 'mouth' || p.part === 'tooth');
-  if (eyes.length === 0) score -= 30;
+  const volEyes = data.volumetricEyes;
+  const hasEyes = (volEyes?.metrics.eyeCount ?? 0) > 0 || eyes.length > 0;
+  if (!hasEyes) score -= 30;
   else score += 6;
+  if (volEyes && volEyes.metrics.avgBulge > 0.08) score += 4;
+  if (volEyes && volEyes.metrics.socketDepth > 0.02) score += 3;
+  if (volEyes && volEyes.metrics.silhouetteClip > 0.15) score -= 8;
   if (mouths.length === 0) score -= 18;
   else score += 6;
   if (mouths.some((p) => p.mouthRole === 'cavity')) score += 4;
