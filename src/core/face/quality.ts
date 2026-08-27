@@ -1,0 +1,201 @@
+import type { MonsterGrid, Particle, ParticlePart } from '../types';
+import { cellKey } from '../types';
+
+const FACE_PARTS: ReadonlySet<ParticlePart> = new Set([
+  'eye',
+  'pupil',
+  'mouth',
+  'tooth',
+  'outline',
+  'brow',
+  'eyelid',
+  'lash',
+  'nose',
+  'freckle',
+  'ear',
+  'hair',
+]);
+
+const ORTHO: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/** Soft cap for gallery / detail 60fps (MonsterView sprite budget). */
+export const PARTICLE_BUDGET = 4000;
+
+function isWalkablePart(part: ParticlePart): boolean {
+  return part === 'body' || part === 'appendage' || FACE_PARTS.has(part);
+}
+
+/**
+ * Keys reachable from any body cell via 4-connected body/appendage/face bridge.
+ * Face cells outside this set are floating defects.
+ */
+function reachableFromBody(
+  entries: Iterable<{ col: number; row: number; part: ParticlePart }>,
+): Set<string> {
+  const walkable = new Set<string>();
+  const bodyKeys: string[] = [];
+  for (const e of entries) {
+    const k = `${e.col},${e.row}`;
+    if (isWalkablePart(e.part)) walkable.add(k);
+    if (e.part === 'body') bodyKeys.push(k);
+  }
+
+  const visited = new Set<string>();
+  if (bodyKeys.length === 0) return visited;
+
+  const q = [...bodyKeys];
+  for (const k of q) visited.add(k);
+  let qi = 0;
+  while (qi < q.length) {
+    const cur = q[qi++]!;
+    const comma = cur.indexOf(',');
+    const c = Number(cur.slice(0, comma));
+    const r = Number(cur.slice(comma + 1));
+    for (const [dc, dr] of ORTHO) {
+      const nk = `${c + dc},${r + dr}`;
+      if (!walkable.has(nk) || visited.has(nk)) continue;
+      visited.add(nk);
+      q.push(nk);
+    }
+  }
+  return visited;
+}
+
+/**
+ * Remove face particles that are not 4-connected to the body silhouette
+ * (via face/appendage bridge). Returns count removed.
+ */
+export function pruneFloatingFeatures(grid: MonsterGrid): number {
+  const visited = reachableFromBody(grid.cells.values());
+  if (visited.size === 0) {
+    // No body — drop all face parts (broken candidate)
+    let removed = 0;
+    for (const [k, c] of [...grid.cells.entries()]) {
+      if (FACE_PARTS.has(c.part) && grid.cells.delete(k)) removed++;
+    }
+    return removed;
+  }
+
+  let removed = 0;
+  for (const [k, c] of [...grid.cells.entries()]) {
+    if (!FACE_PARTS.has(c.part)) continue;
+    if (visited.has(`${c.col},${c.row}`)) continue;
+    if (grid.cells.delete(k)) removed++;
+  }
+  return removed;
+}
+
+/** Drop flecks not within 1 ortho step of body/hair (silhouette debris). */
+export function pruneOrphanFlecks(grid: MonsterGrid): number {
+  let removed = 0;
+  for (const [k, c] of [...grid.cells.entries()]) {
+    if (c.part !== 'fleck') continue;
+    let near = false;
+    for (const [dc, dr] of ORTHO) {
+      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
+      if (nb && (nb.part === 'body' || nb.part === 'appendage' || nb.part === 'hair')) {
+        near = true;
+        break;
+      }
+    }
+    if (!near && grid.cells.delete(k)) removed++;
+  }
+  return removed;
+}
+
+/**
+ * Remove appendage cells in the bottom 15% of the body bbox (pseudo-legs).
+ * Head toppers above 70% height are kept.
+ */
+export function stripBottomAppendages(grid: MonsterGrid): number {
+  const body = [...grid.cells.values()].filter((c) => c.part === 'body');
+  if (body.length === 0) return 0;
+  const minR = Math.min(...body.map((c) => c.row));
+  const maxR = Math.max(...body.map((c) => c.row));
+  const h = Math.max(1, maxR - minR);
+  const legBand = minR + Math.floor(h * 0.15);
+  let removed = 0;
+  for (const [k, c] of [...grid.cells.entries()]) {
+    if (c.part !== 'appendage') continue;
+    if (c.row < legBand && grid.cells.delete(k)) removed++;
+  }
+  return removed;
+}
+
+/** Count face particles not 4-connected to any body cell (via face/appendage bridge). */
+export function countFloatingFaceParticles(particles: Particle[]): number {
+  const visited = reachableFromBody(particles);
+  if (visited.size === 0) {
+    return particles.filter((p) => FACE_PARTS.has(p.part)).length;
+  }
+  return particles.filter((p) => FACE_PARTS.has(p.part) && !visited.has(`${p.col},${p.row}`))
+    .length;
+}
+
+/** Drop floating face particles from the particle list (post-grid safety net). */
+export function stripFloatingFaceParticles(particles: Particle[]): Particle[] {
+  const visited = reachableFromBody(particles);
+  if (visited.size === 0) {
+    return particles.filter((p) => !FACE_PARTS.has(p.part));
+  }
+  return particles.filter((p) => !FACE_PARTS.has(p.part) || visited.has(`${p.col},${p.row}`));
+}
+
+/** Cap particle list for 60fps — drop decorative first; never sacrifice core face. */
+export function enforceParticleBudget(particles: Particle[], max = PARTICLE_BUDGET): Particle[] {
+  if (particles.length <= max) return particles;
+
+  const isCoreFace = (p: Particle): boolean =>
+    p.part === 'eye' ||
+    p.part === 'pupil' ||
+    p.part === 'mouth' ||
+    p.part === 'tooth' ||
+    p.part === 'nose' ||
+    p.part === 'brow' ||
+    p.part === 'eyelid';
+
+  let out = particles;
+  const drop = (pred: (p: Particle) => boolean) => {
+    if (out.length <= max) return;
+    const keep = out.filter((p) => !pred(p) || isCoreFace(p));
+    if (keep.some((p) => p.part === 'body')) out = keep;
+  };
+  drop((p) => p.part === 'aura');
+  drop((p) => p.part === 'fleck');
+  drop((p) => p.part === 'freckle');
+  drop((p) => p.part === 'outline');
+  drop((p) => p.part === 'lash');
+  drop((p) => p.part === 'hair' && p.tipFactor > 0.85);
+  // Keep ears — don't drop tippy ears before decorative leftovers
+
+  if (out.length <= max) return out;
+
+  // Tiered keep: core face → body → appendage → rest
+  const core = out.filter(isCoreFace);
+  const body = out.filter((p) => p.part === 'body');
+  const limbs = out.filter((p) => p.part === 'appendage');
+  const rest = out.filter(
+    (p) => !isCoreFace(p) && p.part !== 'body' && p.part !== 'appendage',
+  );
+
+  const pick = [...core];
+  const take = (arr: Particle[], room: number) => {
+    if (room <= 0 || arr.length === 0) return 0;
+    const n = Math.min(room, arr.length);
+    // Prefer central / lower tipFactor when thinning body mass
+    const sorted = [...arr].sort((a, b) => a.tipFactor - b.tipFactor || a.z - b.z);
+    pick.push(...sorted.slice(0, n));
+    return n;
+  };
+
+  let room = max - pick.length;
+  room -= take(body, room);
+  room -= take(limbs, Math.max(0, room));
+  take(rest, Math.max(0, room));
+  return pick.slice(0, max);
+}
