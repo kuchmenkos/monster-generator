@@ -1,4 +1,5 @@
 import type { MonsterData, Particle } from './types';
+import { countFloatingFaceParticles, PARTICLE_BUDGET } from './face/quality';
 
 const ORTHO: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
@@ -110,7 +111,7 @@ export function scoreMonster(data: MonsterData): number {
   const mouths = data.particles.filter(
     (p) => p.part === 'mouth' || p.part === 'tooth',
   );
-  if (eyes.length === 0) score -= 30;
+  if (eyes.length === 0) return -1000; // hard reject — never ship eyeless
   else score += 6;
   if (pupils.length === 0) score -= 10;
   if (mouths.length === 0) score -= 20;
@@ -122,18 +123,57 @@ export function scoreMonster(data: MonsterData): number {
     if (pu.pupilRange && pu.pupilRange.x > 0) score += 1;
   }
 
+  // boolala.boo face richness
+  const noses = data.particles.filter((p) => p.part === 'nose');
+  const brows = data.particles.filter((p) => p.part === 'brow');
+  const lashes = data.particles.filter((p) => p.part === 'lash');
+  const hair = data.particles.filter((p) => p.part === 'hair');
+  const freckles = data.particles.filter((p) => p.part === 'freckle');
+  const ears = data.particles.filter((p) => p.part === 'ear');
+  if (noses.length > 0) score += 4;
+  if (brows.length >= 2) score += 3;
+  else if (brows.length === 1) score += 1;
+  if (lashes.length > 0) score += 2;
+  if (hair.length >= 8) score += 3;
+  else if (hair.length >= 4) score += 1;
+  if (freckles.length > 0) score += 2;
+  if (ears.length >= 2) score += 2;
+
+  // Asymmetry bonus — different faceSide counts
+  const leftFace = data.particles.filter((p) => p.faceSide === -1).length;
+  const rightFace = data.particles.filter((p) => p.faceSide === 1).length;
+  if (leftFace > 0 && rightFace > 0 && Math.abs(leftFace - rightFace) > 2) score += 3;
+
+  // Floating face features (defects)
+  const floatingFace = countFloatingFaceParticles(data.particles);
+  if (floatingFace > 0) score -= 15 + Math.min(40, floatingFace);
+
+  // Reject extreme particle bloat (lag guard) — hard reject above budget
+  if (data.particles.length > PARTICLE_BUDGET) return -1000;
+  if (data.particles.length > PARTICLE_BUDGET - 200) score -= 40;
+  if (hair.length > 140) score -= 15;
+
   // --- Limbs / flecks ---
   const limbs = data.particles.filter((p) => p.part === 'appendage');
   const flecks = data.particles.filter((p) => p.part === 'fleck');
   if (limbs.length >= 8) score += 10;
   else if (limbs.length >= 3) score += 4;
   else score -= 6;
-  if (flecks.length >= 4) score += 4;
+  if (flecks.length >= 4 || hair.length >= 6) score += 4;
 
   // Prefer non-boxy archetypes slightly
   if (data.archetype === 'column' || data.archetype === 'wide' || data.archetype === 'stack') score -= 40;
   if (data.archetype === 'lanky' || data.archetype === 'bighead' || data.archetype === 'pear') {
     score += 3;
+  }
+  if (
+    data.archetype === 'egg' ||
+    data.archetype === 'dumpling' ||
+    data.archetype === 'teardrop' ||
+    data.archetype === 'hourglass' ||
+    data.archetype === 'star'
+  ) {
+    score += 4;
   }
   if (data.archetype === 'slug') score -= 4;
 

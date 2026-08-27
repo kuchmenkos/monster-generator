@@ -1,4 +1,4 @@
-# Agent instructions — Monster Generator
+# Agent instructions — boolala.boo
 
 Before changing the procedural generator (`src/core/**`), always:
 
@@ -10,3 +10,5 @@ Before changing the procedural generator (`src/core/**`), always:
 Do not delete dislike entries — keep history for future sessions.
 
 Likes/dislikes are written automatically when the user taps ♥ / 👎 in the detail view (dev server middleware `POST /__feedback`).
+
+Face features live in `src/core/face/**` (2D particle pipeline, not mesh).

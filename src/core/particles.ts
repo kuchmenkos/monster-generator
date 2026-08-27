@@ -513,7 +513,7 @@ function applyFlecksAndDrips(rng: Rng, grid: MonsterGrid, palette: MonsterPalett
   // Prefer top / side rim for hair tufts
   const topRim = rim.filter((c) => c.row >= midR);
   const anchors = topRim.length >= 2 ? topRim : rim;
-  const tuftCount = rng.int(2, Math.max(3, Math.round(5 * grid.scaleRef * 0.55)));
+  const tuftCount = rng.int(1, Math.max(2, Math.round(3 * grid.scaleRef * 0.45)));
 
   for (let t = 0; t < tuftCount; t++) {
     const start = anchors[rng.int(0, anchors.length - 1)]!;
@@ -654,6 +654,9 @@ export function gridToParticles(grid: MonsterGrid) {
     isRim: c.isRim,
     pupilRange: c.pupilRange,
     glow: c.glow,
+    faceSide: c.faceSide,
+    hairStrand: c.hairStrand,
+    lidRole: c.lidRole,
   }));
   particles.sort((a, b) => a.z - b.z);
   return particles;
