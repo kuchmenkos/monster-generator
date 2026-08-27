@@ -94,8 +94,13 @@ function applyBelly(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void 
     if (Math.abs(c.col - midC) > halfW) continue;
     const nx = (c.col - midC) / halfW;
     const ny = (bellyHi - c.row) / Math.max(1, bellyHi - minR);
-    if (nx * nx + ny * ny * 0.7 < 1) c.color = lighten(c.color, 0.12);
-    if (nx * nx + ny * ny * 0.7 < 0.55) c.color = tint;
+    const r2 = nx * nx + ny * ny * 0.7;
+    const edgeNoise = ((c.col * 3 + c.row * 7) % 5) * 0.04;
+    if (r2 < 0.35) c.color = tint;
+    else if (r2 < 0.75 + edgeNoise) {
+      // Soft falloff — dither instead of solid block
+      if ((c.col + c.row) % 2 === 0 || r2 < 0.55) c.color = lighten(c.color, 0.1);
+    }
   }
 }
 
@@ -149,10 +154,14 @@ function applyGradient(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): vo
   const bot = rng.chance(0.5) ? palette.shadow : palette.accent2;
   for (const c of body) {
     const t = (c.row - minR) / span;
-    const dither = (c.col + c.row) % 3 === 0 ? 0.08 : 0;
+    const dither = ((c.col * 2 + c.row) % 5) * 0.03;
     const u = Math.min(1, Math.max(0, t + dither));
-    c.color = u < 0.45 ? top : u < 0.55 ? c.color : bot;
-    if (u >= 0.45 && u < 0.55 && (c.col + c.row) % 2 === 0) c.color = top;
+    if (u < 0.38) c.color = top;
+    else if (u > 0.62) c.color = bot;
+    else {
+      // Mid blend — checker instead of solid half
+      c.color = (c.col + c.row) % 2 === 0 ? top : bot;
+    }
   }
 }
 
@@ -235,8 +244,15 @@ function applyMask(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
   const tint = lighten(palette.base, 0.16);
   for (const c of body) {
     if (c.row < faceLo || c.row > faceHi) continue;
-    if (Math.abs(c.col - midC) > halfW) continue;
-    c.color = tint;
+    const dx = Math.abs(c.col - midC) / halfW;
+    const edge =
+      c.row <= faceLo + 1 || c.row >= faceHi - 1 || dx > 0.82
+        ? ((c.col + c.row) % 2 === 0)
+        : true;
+    if (dx > 1) continue;
+    if (dx > 0.75 && !edge) continue; // soft lateral edge
+    if (dx > 0.75) c.color = lighten(c.color, 0.08);
+    else c.color = tint;
   }
 }
 
@@ -268,13 +284,15 @@ function applyPatches(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): voi
     return n >= 4;
   });
   const pool = interior.length >= 4 ? interior : body;
-  const patches = rng.int(1, 3);
+  const patches = rng.int(1, 2);
   for (let p = 0; p < patches; p++) {
     const seed = pool[rng.int(0, pool.length - 1)]!;
-    const r = rng.float(2, 4);
+    const r = rng.float(1.5, 2.5);
     const tint = rng.chance(0.5) ? palette.accent2 : darken(palette.base, 0.14);
     for (const c of body) {
-      if (Math.hypot(c.col - seed.col, c.row - seed.row) <= r) c.color = tint;
+      const d = Math.hypot(c.col - seed.col, c.row - seed.row);
+      if (d <= r * 0.65) c.color = tint;
+      else if (d <= r && (c.col + c.row) % 2 === 0) c.color = lighten(c.color, 0.06);
     }
   }
 }
@@ -302,7 +320,12 @@ function applyTwoTone(grid: MonsterGrid, _rng: Rng, palette: MonsterPalette): vo
   if (body.length === 0) return;
   const midC = (Math.min(...body.map((c) => c.col)) + Math.max(...body.map((c) => c.col))) / 2;
   for (const c of body) {
-    if (c.col >= midC) c.color = lighten(palette.base, 0.1);
+    const t = (c.col - midC) / Math.max(1, Math.abs(midC) + 4);
+    // Soft mid blend band with checker dither — no hard vertical split
+    if (Math.abs(t) < 0.12) {
+      c.color =
+        (c.col + c.row) % 2 === 0 ? lighten(palette.base, 0.06) : darken(palette.base, 0.04);
+    } else if (c.col >= midC) c.color = lighten(palette.base, 0.1);
     else c.color = darken(palette.base, 0.08);
   }
 }
@@ -346,18 +369,20 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
     'belly',
     'belly',
     'spots',
+    'spots',
     'stripes',
     'gradient',
     'rosettes',
     'scales',
     'stripes-curved',
-    'mask',
     'dual-gradient',
     'mottled',
-    'two_tone',
-    // rarer stamp-like coats
-    'patches',
+    'mottled',
     'speckle',
+    // rare hard-edged / stamp coats
+    'mask',
+    'two_tone',
+    'patches',
     'zigzag_coat',
     'rim_glow',
   ]);

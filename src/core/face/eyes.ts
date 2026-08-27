@@ -2,7 +2,7 @@ import { darken } from '../palette';
 import type { Rng } from '../rng';
 import type { GridCell, MonsterGrid, MonsterPalette } from '../types';
 import { cellKey } from '../types';
-import { eyeMask, shearMask, stretchMask } from './masks';
+import { eyeMask, fillMaskHoles, shearMask, stretchMask } from './masks';
 import { paintOutlineRing, putCell } from './shading';
 import type { EyeShape } from './types';
 
@@ -21,26 +21,31 @@ export function paintEyeShaped(
   faceSide: -1 | 1 | 0 = 0,
 ): void {
   let mask = eyeMask(shape, w, h);
-  // Weird stretch/shear ~35%
-  if (rng.chance(0.35)) {
-    mask = stretchMask(mask, rng.float(0.75, 1.35), rng.float(0.7, 1.25));
+  // Mild stretch/shear only — holes filled to avoid black lattice
+  if (rng.chance(0.12)) {
+    mask = stretchMask(mask, rng.float(0.85, 1.2), rng.float(0.85, 1.15));
   }
-  if (rng.chance(0.25)) {
-    mask = shearMask(mask, rng.float(-0.25, 0.25));
+  if (rng.chance(0.1)) {
+    mask = shearMask(mask, rng.float(-0.15, 0.15));
   }
+  mask = fillMaskHoles(mask);
 
-  paintOutlineRing(grid, originCol, originRow, mask, base, palette.outline, ringThick);
+  const fillSclera = () => {
+    for (const key of mask) {
+      const [xs, ys] = key.split(',').map(Number) as [number, number];
+      const fill = shape === 'void' ? darken(palette.pupil, 0.1) : palette.eyeWhite;
+      putCell(grid, originCol + xs, originRow + ys, base, fill, 'eye', {
+        zBoost: 0.04,
+        faceSide: faceSide === 0 ? undefined : faceSide,
+      });
+    }
+  };
 
-  for (const key of mask) {
-    const [xs, ys] = key.split(',').map(Number) as [number, number];
-    // Void: dark fill, tiny pupil later
-    const fill =
-      shape === 'void' ? darken(palette.pupil, 0.1) : palette.eyeWhite;
-    putCell(grid, originCol + xs, originRow + ys, base, fill, 'eye', {
-      zBoost: 0.04,
-      faceSide: faceSide === 0 ? undefined : faceSide,
-    });
-  }
+  paintOutlineRing(grid, originCol, originRow, mask, base, palette.outline, Math.min(1, ringThick));
+  // Fill after outline so sclera always wins over any stray outline
+  fillSclera();
+  // Repair: any outline sandwiched by eye cells → sclera (kills lattice)
+  repairOutlineLattice(grid, originCol, originRow, w, h, palette, shape, base, faceSide);
 
   if (irisColor !== undefined && w >= 4 && h >= 4 && shape !== 'void') {
     const icx = Math.floor(w / 2);
@@ -144,4 +149,40 @@ function putPupil(
   putCell(grid, col, row, base, palette.pupil, 'pupil', { zBoost: 0.055 });
   const pupilCell = grid.cells.get(cellKey(col, row));
   if (pupilCell) pupilCell.pupilRange = { x: rangeX, y: rangeY };
+}
+
+/** Convert outline cells trapped between eye/pupil into sclera (anti-lattice). */
+function repairOutlineLattice(
+  grid: MonsterGrid,
+  originCol: number,
+  originRow: number,
+  w: number,
+  h: number,
+  palette: MonsterPalette,
+  shape: EyeShape,
+  base: GridCell,
+  faceSide: -1 | 1 | 0,
+): void {
+  const pad = 2;
+  for (let y = -pad; y < h + pad; y++) {
+    for (let x = -pad; x < w + pad; x++) {
+      const col = originCol + x;
+      const row = originRow + y;
+      const cell = grid.cells.get(cellKey(col, row));
+      if (!cell || cell.part !== 'outline') continue;
+      const L = grid.cells.get(cellKey(col - 1, row));
+      const R = grid.cells.get(cellKey(col + 1, row));
+      const U = grid.cells.get(cellKey(col, row + 1));
+      const D = grid.cells.get(cellKey(col, row - 1));
+      const eyeish = (c: GridCell | undefined) =>
+        !!c && (c.part === 'eye' || c.part === 'pupil');
+      if ((eyeish(L) && eyeish(R)) || (eyeish(U) && eyeish(D))) {
+        const fill = shape === 'void' ? darken(palette.pupil, 0.1) : palette.eyeWhite;
+        putCell(grid, col, row, base, fill, 'eye', {
+          zBoost: 0.04,
+          faceSide: faceSide === 0 ? undefined : faceSide,
+        });
+      }
+    }
+  }
 }

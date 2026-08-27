@@ -140,6 +140,14 @@ export function scoreMonster(data: MonsterData): number {
   if (noses.length > 0) score += 4;
   if (brows.length >= 2) score += 3;
   else if (brows.length === 1) score += 1;
+  // Mustache proxy: dense brow cells in lower face band near mouth
+  const mouthsForBand = data.particles.filter((p) => p.part === 'mouth');
+  if (mouthsForBand.length > 0 && brows.length >= 6) {
+    const mouthMaxR = Math.max(...mouthsForBand.map((p) => p.row));
+    const mouthMinR = Math.min(...mouthsForBand.map((p) => p.row));
+    const stache = brows.filter((p) => p.row <= mouthMaxR + 2 && p.row >= mouthMinR - 3);
+    if (stache.length >= 4) score += 2;
+  }
   if (lashes.length > 0) score += 2;
   if (hair.length >= 8) score += 3;
   else if (hair.length >= 4) score += 1;

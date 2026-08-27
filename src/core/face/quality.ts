@@ -167,11 +167,11 @@ export function enforceParticleBudget(particles: Particle[], max = PARTICLE_BUDG
   };
   drop((p) => p.part === 'aura');
   drop((p) => p.part === 'fleck');
-  drop((p) => p.part === 'hair' && p.tipFactor > 0.7);
   drop((p) => p.part === 'freckle');
   drop((p) => p.part === 'outline');
   drop((p) => p.part === 'lash');
-  drop((p) => p.part === 'ear' && p.tipFactor > 0.55);
+  drop((p) => p.part === 'hair' && p.tipFactor > 0.85);
+  // Keep ears — don't drop tippy ears before decorative leftovers
 
   if (out.length <= max) return out;
 

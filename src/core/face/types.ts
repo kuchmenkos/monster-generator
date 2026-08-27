@@ -61,6 +61,8 @@ export type HairStyle =
   | 'wild_mane'
   | 'bald_patch';
 
+export type MustacheStyle = 'walrus' | 'pencil' | 'handlebar' | 'stubble' | 'fu_manchu';
+
 export type BrowStyle = 'straight' | 'angry' | 'surprised' | 'bushy' | 'thin' | 'unibrow';
 
 export type LidStyle = 'heavy' | 'monolid' | 'droopy' | 'wide' | 'sleepy_half';

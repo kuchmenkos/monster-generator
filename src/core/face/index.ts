@@ -22,6 +22,7 @@ export type {
   LidStyle,
   LipCurveKind,
   MouthStyle,
+  MustacheStyle,
   NoseStyle,
   ToothStyle,
 } from './types';

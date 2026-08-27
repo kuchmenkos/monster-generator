@@ -13,13 +13,13 @@ import { paintHair } from './hair';
 import { paintLashes } from './lashes';
 import { paintLids } from './lids';
 import { paintMouthFromCurve } from './mouth';
+import { paintMustache } from './mustache';
 import { paintNose } from './nose';
 import { pruneFloatingFeatures, pruneOrphanFlecks, stripBottomAppendages } from './quality';
 
 /**
  * boolala.boo face pipeline with composition presets:
- * eyes → brows → lids → lashes → nose → ears → mouth → accents → hair.
- * Landmarks are body-only; one mood recipe drives all styles.
+ * eyes → brows → lids → lashes → nose → mustache → ears → mouth → accents → hair.
  */
 export function applyFace(
   rng: Rng,
@@ -47,7 +47,7 @@ export function applyFace(
       e.h,
       e.shape,
       base,
-      recipe.eyeArchetype === 'goggle' ? 2 : 1,
+      1,
       recipe.eyeArchetype === 'cyclops-giant' ? palette.accent : undefined,
       e.side,
     );
@@ -64,19 +64,9 @@ export function applyFace(
   }
 
   if (recipe.earStyle) {
-    paintFacialEars(
-      grid,
-      rng,
-      palette,
-      midC,
-      eyeBandR,
-      faceW,
-      base,
-      recipe.earStyle,
-    );
+    paintFacialEars(grid, rng, palette, midC, eyeBandR, faceW, base, recipe.earStyle);
   }
 
-  // Mouth in lower face band — never a lonely flat 1px line without cavity/teeth rules
   const faceHalf = Math.max(3, Math.floor(faceW * 0.5));
   paintMouthFromCurve(
     grid,
@@ -94,6 +84,11 @@ export function applyFace(
       minHalfW: Math.max(2, Math.floor(faceW * 0.12)),
     },
   );
+
+  // Mustache after mouth so lip cavity doesn't erase whiskers
+  if (recipe.mustacheStyle) {
+    paintMustache(grid, rng, palette, midC, noseR, mouthBandR, base, recipe.mustacheStyle);
+  }
 
   if (recipe.doAccents) paintAccents(grid, rng, palette, midC, eyeBandR - 1, faceW, faceH, base);
 

@@ -111,6 +111,65 @@ export function shearMask(mask: Set<string>, amount: number): Set<string> {
   return out.size >= 3 ? out : mask;
 }
 
+/**
+ * Fill interior holes after stretch/shear (prevents outline lattice on sclera).
+ * Flood from outside the bbox; any unreachable cell inside bbox is a hole → add to mask.
+ */
+export function fillMaskHoles(mask: Set<string>): Set<string> {
+  if (mask.size < 3) return mask;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const key of mask) {
+    const [xs, ys] = key.split(',').map(Number) as [number, number];
+    minX = Math.min(minX, xs);
+    maxX = Math.max(maxX, xs);
+    minY = Math.min(minY, ys);
+    maxY = Math.max(maxY, ys);
+  }
+  // Expand bbox by 1 so exterior flood can enter
+  minX -= 1;
+  maxX += 1;
+  minY -= 1;
+  maxY += 1;
+
+  const outside = new Set<string>();
+  const q: string[] = [`${minX},${minY}`];
+  outside.add(q[0]!);
+  const ORTHO = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
+  let qi = 0;
+  while (qi < q.length) {
+    const cur = q[qi++]!;
+    const comma = cur.indexOf(',');
+    const x = Number(cur.slice(0, comma));
+    const y = Number(cur.slice(comma + 1));
+    for (const [dx, dy] of ORTHO) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
+      const nk = `${nx},${ny}`;
+      if (outside.has(nk) || mask.has(nk)) continue;
+      outside.add(nk);
+      q.push(nk);
+    }
+  }
+
+  const filled = new Set(mask);
+  for (let y = minY + 1; y <= maxY - 1; y++) {
+    for (let x = minX + 1; x <= maxX - 1; x++) {
+      const k = `${x},${y}`;
+      if (!outside.has(k) && !mask.has(k)) filled.add(k);
+    }
+  }
+  return filled.size >= 3 ? filled : mask;
+}
+
 export function faceRegion(
   grid: import('../types').MonsterGrid,
   shiftX: number,

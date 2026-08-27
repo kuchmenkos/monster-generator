@@ -10,6 +10,7 @@ import type {
   LashStyle,
   LidStyle,
   MouthStyle,
+  MustacheStyle,
   NoseStyle,
   ToothStyle,
 } from './types';
@@ -47,10 +48,37 @@ export interface FaceRecipe {
   mouthStyle: MouthStyle;
   toothStyle: ToothStyle;
   hairStyle: HairStyle | null;
+  mustacheStyle: MustacheStyle | null;
   doBrows: boolean;
   doLids: boolean;
   doAccents: boolean;
   weird: boolean;
+}
+
+function pickEar(rng: Rng, pool: EarStyle[]): EarStyle {
+  return rng.pick(pool)!;
+}
+
+function pickHair(rng: Rng): HairStyle {
+  // Dense mane bias; bald_patch rare (~5%)
+  if (rng.chance(0.05)) return 'bald_patch';
+  return rng.pick([
+    'afro_puff',
+    'afro_puff',
+    'curtain',
+    'curtain',
+    'wild_mane',
+    'wild_mane',
+    'mohawk',
+    'mohawk',
+    'spikes',
+    'braid',
+  ] as HairStyle[])!;
+}
+
+function pickMustache(rng: Rng, chance: number): MustacheStyle | null {
+  if (!rng.chance(chance)) return null;
+  return rng.pick(['walrus', 'pencil', 'handlebar', 'stubble', 'fu_manchu'] as MustacheStyle[])!;
 }
 
 /**
@@ -125,12 +153,11 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
         lidStyle: 'wide',
         lashStyle: rng.chance(0.55) ? 'fan' : null,
         noseStyle: rng.pick(['button', 'slit', 'bulb'] as NoseStyle[]),
-        earStyle: rng.chance(0.7) ? rng.pick(['lobe', 'shell', 'pointy'] as EarStyle[]) : null,
+        earStyle: pickEar(rng, ['lobe', 'shell', 'pointy', 'floppy']),
         mouthStyle: rng.pick(['open-maw', 'open-maw', 'tongue-out'] as MouthStyle[]),
         toothStyle: rng.pick(['row_even', 'stump', 'gap_grin'] as ToothStyle[]),
-        hairStyle: rng.chance(0.85)
-          ? rng.pick(['curtain', 'mohawk', 'afro_puff', 'spikes'] as HairStyle[])
-          : null,
+        hairStyle: rng.chance(0.92) ? pickHair(rng) : null,
+        mustacheStyle: pickMustache(rng, 0.6),
         doBrows: true,
         doLids: true,
         doAccents: rng.chance(0.45),
@@ -145,12 +172,11 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
         lidStyle: 'sleepy_half',
         lashStyle: rng.pick(['fan', 'clump', 'spike'] as LashStyle[]),
         noseStyle: 'button',
-        earStyle: rng.chance(0.75) ? rng.pick(['lobe', 'floppy', 'shell'] as EarStyle[]) : null,
+        earStyle: pickEar(rng, ['lobe', 'floppy', 'shell', 'pointy']),
         mouthStyle: rng.pick(['open-maw', 'tiny', 'tongue-out'] as MouthStyle[]),
         toothStyle: rng.pick(['buck', 'row_even', 'stump'] as ToothStyle[]),
-        hairStyle: rng.chance(0.9)
-          ? rng.pick(['curtain', 'afro_puff', 'wild_mane'] as HairStyle[])
-          : null,
+        hairStyle: rng.chance(0.95) ? pickHair(rng) : null,
+        mustacheStyle: pickMustache(rng, 0.5),
         doBrows: true,
         doLids: true,
         doAccents: rng.chance(0.55),
@@ -165,12 +191,11 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
         lidStyle: 'heavy',
         lashStyle: rng.chance(0.35) ? 'spider' : null,
         noseStyle: rng.pick(['beak', 'snout', 'slit'] as NoseStyle[]),
-        earStyle: rng.chance(0.65) ? rng.pick(['pointy', 'bat', 'notch'] as EarStyle[]) : null,
+        earStyle: pickEar(rng, ['pointy', 'bat', 'notch', 'shell']),
         mouthStyle: 'open-maw',
         toothStyle: rng.pick(['fang_pair', 'shark', 'gold_cap'] as ToothStyle[]),
-        hairStyle: rng.chance(0.8)
-          ? rng.pick(['spikes', 'mohawk', 'wild_mane'] as HairStyle[])
-          : null,
+        hairStyle: rng.chance(0.9) ? pickHair(rng) : null,
+        mustacheStyle: pickMustache(rng, 0.8),
         doBrows: true,
         doLids: true,
         doAccents: rng.chance(0.35),
@@ -185,12 +210,11 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
         lidStyle: rng.pick(['droopy', 'monolid', 'heavy'] as LidStyle[]),
         lashStyle: rng.chance(0.4) ? 'lower_only' : null,
         noseStyle: rng.pick(['bulb', 'patch', 'slit'] as NoseStyle[]),
-        earStyle: rng.chance(0.5) ? rng.pick(['lobe', 'shell'] as EarStyle[]) : null,
+        earStyle: pickEar(rng, ['lobe', 'shell', 'pointy']),
         mouthStyle: rng.pick(['open-maw', 'open-maw', 'zigzag'] as MouthStyle[]),
         toothStyle: rng.pick(['row_even', 'fang_pair', 'stump'] as ToothStyle[]),
-        hairStyle: rng.chance(0.75)
-          ? rng.pick(['mohawk', 'bald_patch', 'spikes', 'braid'] as HairStyle[])
-          : null,
+        hairStyle: rng.chance(0.88) ? pickHair(rng) : null,
+        mustacheStyle: pickMustache(rng, 0.55),
         doBrows: true,
         doLids: true,
         doAccents: rng.chance(0.4),
@@ -205,20 +229,20 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
           rng.pick(['void', 'hex', 'blob', 'cross'] as EyeShape[])!,
           rng.pick(['heart', 'triple', 'diamond'] as EyeShape[])!,
         ],
-        browStyle: rng.pick(['thin', 'bushy', 'unibrow'] as BrowStyle[]),
+        browStyle: rng.pick(['bushy', 'unibrow', 'angry'] as BrowStyle[]),
         lidStyle: rng.pick(['monolid', 'droopy', 'wide'] as LidStyle[]),
         lashStyle: rng.chance(0.5) ? rng.pick(['spider', 'clump'] as LashStyle[]) : null,
         noseStyle: rng.pick(['beak', 'patch', 'snout'] as NoseStyle[]),
-        earStyle: rng.chance(0.6)
-          ? rng.pick(['asymmetric_stub', 'bat', 'floppy'] as EarStyle[])
+        // Rare earless odd (~8% of odd ≈ <1% overall)
+        earStyle: rng.chance(0.92)
+          ? pickEar(rng, ['asymmetric_stub', 'bat', 'floppy', 'notch'])
           : null,
         mouthStyle: rng.pick(['open-maw', 'zigzag', 'tongue-out'] as MouthStyle[]),
         toothStyle: rng.pick(['shark', 'gap_grin', 'gold_cap'] as ToothStyle[]),
-        hairStyle: rng.chance(0.85)
-          ? rng.pick(['wild_mane', 'braid', 'spikes'] as HairStyle[])
-          : null,
-        doBrows: rng.chance(0.7),
-        doLids: rng.chance(0.65),
+        hairStyle: rng.chance(0.9) ? pickHair(rng) : null,
+        mustacheStyle: pickMustache(rng, 0.55),
+        doBrows: true,
+        doLids: rng.chance(0.75),
         doAccents: rng.chance(0.55),
         weird: true,
       };

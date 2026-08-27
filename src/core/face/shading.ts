@@ -24,17 +24,25 @@ export function bodyOnly(grid: MonsterGrid): GridCell[] {
   return [...grid.cells.values()].filter((c) => c.part === 'body');
 }
 
-/** True if col/row is on body (or within 1-cell soft rim). */
-export function nearBody(grid: MonsterGrid, col: number, row: number, soft = false): boolean {
+/** True if col/row is on body (or within softRadius ortho/manhattan steps). */
+export function nearBody(
+  grid: MonsterGrid,
+  col: number,
+  row: number,
+  soft = false,
+  softRadius = 1,
+): boolean {
   if (grid.cells.get(cellKey(col, row))?.part === 'body') return true;
   if (!soft) return false;
-  for (const [dc, dr] of [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ] as const) {
-    if (grid.cells.get(cellKey(col + dc, row + dr))?.part === 'body') return true;
+  const r = Math.max(1, softRadius);
+  for (let dr = -r; dr <= r; dr++) {
+    for (let dc = -r; dc <= r; dc++) {
+      if (Math.abs(dc) + Math.abs(dr) > r || (dc === 0 && dr === 0)) continue;
+      if (grid.cells.get(cellKey(col + dc, row + dr))?.part === 'body') return true;
+      // Also accept appendage/ear stalk as bridge for tip growth
+      const nb = grid.cells.get(cellKey(col + dc, row + dr));
+      if (nb && (nb.part === 'appendage' || nb.part === 'ear')) return true;
+    }
   }
   return false;
 }
@@ -126,7 +134,7 @@ export function paintWithShadow(
   return true;
 }
 
-/** Outline ring around a set of local mask keys `"x,y"` placed at origin. */
+/** Exterior-only outline ring — never fills interior holes in the mask. */
 export function paintOutlineRing(
   grid: MonsterGrid,
   originCol: number,
@@ -136,28 +144,44 @@ export function paintOutlineRing(
   outlineColor: number,
   thick = 1,
 ): void {
-  for (let r = 1; r <= thick; r++) {
-    for (const key of mask) {
-      const [xs, ys] = key.split(',');
-      const x = Number(xs);
-      const y = Number(ys);
-      for (const [dx, dy] of [
-        [r, 0],
-        [-r, 0],
-        [0, r],
-        [0, -r],
-        [r, r],
-        [-r, r],
-        [r, -r],
-        [-r, -r],
-      ] as const) {
-        const nk = `${x + dx},${y + dy}`;
-        if (!mask.has(nk)) {
-          putCell(grid, originCol + x + dx, originRow + y + dy, base, outlineColor, 'outline', {
-            zBoost: 0.03,
-          });
-        }
+  const ORTHO = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const;
+  const DIAG = [
+    [1, 1],
+    [-1, 1],
+    [1, -1],
+    [-1, -1],
+  ] as const;
+
+  // Dilate mask by `thick`, then paint only cells in dilate \ mask that touch mask
+  const border = new Set<string>();
+  for (const key of mask) {
+    const [xs, ys] = key.split(',').map(Number) as [number, number];
+    for (let r = 1; r <= thick; r++) {
+      for (const [dx, dy] of [...ORTHO, ...DIAG]) {
+        const nk = `${xs + dx * r},${ys + dy * r}`;
+        if (!mask.has(nk)) border.add(nk);
       }
     }
+  }
+
+  for (const key of border) {
+    const [xs, ys] = key.split(',').map(Number) as [number, number];
+    // Must be adjacent (ortho) to at least one mask cell — skip deep interior cavities
+    let touches = false;
+    for (const [dx, dy] of ORTHO) {
+      if (mask.has(`${xs + dx},${ys + dy}`)) {
+        touches = true;
+        break;
+      }
+    }
+    if (!touches) continue;
+    putCell(grid, originCol + xs, originRow + ys, base, outlineColor, 'outline', {
+      zBoost: 0.03,
+    });
   }
 }

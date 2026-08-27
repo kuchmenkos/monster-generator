@@ -2,8 +2,49 @@ import { countFloatingFaceParticles, PARTICLE_BUDGET } from '../src/core/face/qu
 import { bboxFill, countDetachedAppendages, uniqueBodyColors } from '../src/core/score';
 import { generateMonster } from '../src/core/monster';
 import { generateMonsterName } from '../src/core/names';
+import type { Particle } from '../src/core/types';
 
 const seeds = Array.from({ length: 300 }, (_, i) => `v3-${i}-${(i * 19) % 101}`);
+
+/** Outline cell sandwiched by eye/pupil on ≥2 opposite sides = lattice defect. */
+function countEyeLattice(particles: Particle[]): number {
+  const byKey = new Map(particles.map((p) => [`${p.col},${p.row}`, p] as const));
+  let n = 0;
+  for (const p of particles) {
+    if (p.part !== 'outline') continue;
+    const isEyeish = (part: string) => part === 'eye' || part === 'pupil';
+    const L = byKey.get(`${p.col - 1},${p.row}`);
+    const R = byKey.get(`${p.col + 1},${p.row}`);
+    const U = byKey.get(`${p.col},${p.row + 1}`);
+    const D = byKey.get(`${p.col},${p.row - 1}`);
+    const horiz = L && R && isEyeish(L.part) && isEyeish(R.part);
+    const vert = U && D && isEyeish(U.part) && isEyeish(D.part);
+    if (horiz || vert) n++;
+  }
+  return n;
+}
+
+/** Brow cells above the mouth (mustache sits between nose and lips). */
+function hasMustacheProxy(particles: Particle[]): boolean {
+  const mouths = particles.filter((p) => p.part === 'mouth');
+  const brows = particles.filter((p) => p.part === 'brow');
+  const noses = particles.filter((p) => p.part === 'nose');
+  if (mouths.length === 0 || brows.length < 3) return false;
+  const mouthMaxR = Math.max(...mouths.map((p) => p.row));
+  const lo = mouths.reduce((a, p) => Math.min(a, p.row), Infinity);
+  const hi = noses.length > 0 ? Math.min(...noses.map((p) => p.row)) : mouthMaxR + 4;
+  // Mustache band: from mouth top up toward nose
+  const stache = brows.filter((p) => p.row >= lo - 1 && p.row <= hi + 1);
+  return stache.length >= 3;
+}
+
+/** Brow spans ≥2 distinct rows near an eye — thickness proxy. */
+function hasThickBrows(particles: Particle[]): boolean {
+  const brows = particles.filter((p) => p.part === 'brow');
+  if (brows.length < 4) return false;
+  const rows = new Set(brows.map((p) => p.row));
+  return rows.size >= 2;
+}
 
 let withMouth = 0;
 let withCavity = 0;
@@ -22,13 +63,16 @@ let hasBrow = 0;
 let hasLash = 0;
 let hasAccent = 0;
 let hasEar = 0;
+let hasMustache = 0;
+let thickBrow = 0;
 let maxParticles = 0;
 let maxHair = 0;
 let floatingSum = 0;
 let floatingWorst = 0;
 let bottomLegHits = 0;
-let headOnlyAppend = 0;
+let eyeLatticeSum = 0;
 let withAnyAppend = 0;
+let headOnlyAppend = 0;
 const archetypes: Record<string, number> = {};
 
 for (const seed of seeds) {
@@ -48,6 +92,10 @@ for (const seed of seeds) {
     throw new Error(`particle budget exceeded on ${seed}: ${m.particles.length}`);
   }
 
+  const lattice = countEyeLattice(m.particles);
+  eyeLatticeSum += lattice;
+  if (lattice > 0) throw new Error(`eye lattice on ${seed}: ${lattice}`);
+
   const body = m.particles.filter((p) => p.part === 'body');
   const mouths = m.particles.filter((p) => p.part === 'mouth' || p.part === 'tooth');
   const teeth = m.particles.filter((p) => p.part === 'tooth');
@@ -61,16 +109,17 @@ for (const seed of seeds) {
   const ears = m.particles.filter((p) => p.part === 'ear');
 
   if (noses.length > 0) hasNose++;
-  if (hair.length >= 4) hasHair++;
+  if (hair.length >= 8) hasHair++;
   if (brows.length > 0) hasBrow++;
   if (lashes.length > 0) hasLash++;
   if (accents.length > 0) hasAccent++;
   if (ears.length > 0) hasEar++;
+  if (hasMustacheProxy(m.particles)) hasMustache++;
+  if (hasThickBrows(m.particles)) thickBrow++;
   maxHair = Math.max(maxHair, hair.length);
 
   if (append.length > 0) withAnyAppend++;
 
-  // Pseudo-legs: appendage in bottom 15% of body bbox — must be zero
   if (body.length > 0 && append.length > 0) {
     const bodyMinR = Math.min(...body.map((p) => p.row));
     const bodyMaxR = Math.max(...body.map((p) => p.row));
@@ -138,6 +187,8 @@ console.log(
   headOnlyAppend,
   'bottomLegs',
   bottomLegHits,
+  'eyeLattice',
+  eyeLatticeSum,
 );
 console.log('connectedLimbs', connectedLimbs, 'richCoat', richCoat, 'avgDetached', (detachedSum / seeds.length).toFixed(2));
 console.log('boxyRate', boxyRate.toFixed(3), 'archetypes', archetypes);
@@ -145,24 +196,22 @@ console.log(
   'face',
   'nose=',
   (hasNose / seeds.length).toFixed(2),
-  'hair=',
+  'hair8=',
   (hasHair / seeds.length).toFixed(2),
   'brow=',
   (hasBrow / seeds.length).toFixed(2),
+  'thickBrow=',
+  (thickBrow / seeds.length).toFixed(2),
   'lash=',
   (hasLash / seeds.length).toFixed(2),
-  'accent=',
-  (hasAccent / seeds.length).toFixed(2),
   'ear=',
   (hasEar / seeds.length).toFixed(2),
+  'mustache=',
+  (hasMustache / seeds.length).toFixed(2),
   'maxHair=',
   maxHair,
   'maxParticles=',
   maxParticles,
-  'floatingSum=',
-  floatingSum,
-  'floatingWorst=',
-  floatingWorst,
 );
 console.log('deterministic', same);
 
@@ -176,12 +225,16 @@ if (boxyRate > 0.02) throw new Error('too many boxy archetypes');
 if (avgMs > 200) throw new Error(`gen too slow: ${avgMs}ms (budget 200ms)`);
 if (bottomLegHits > 0) throw new Error(`bottom leg protrusions: ${bottomLegHits}`);
 if (detachedSum > 0) throw new Error(`detached appendages total=${detachedSum}`);
+if (eyeLatticeSum > 0) throw new Error(`eye lattice total=${eyeLatticeSum}`);
 if (connectedLimbs < seeds.length * 0.92) throw new Error('too many detached limbs');
 if (richCoat < seeds.length * 0.7) throw new Error('too few coat tones');
 if (hasNose < seeds.length * 0.7) throw new Error('too few noses');
-if (hasHair < seeds.length * 0.55) throw new Error('too few hairstyles');
+if (hasHair < seeds.length * 0.75) throw new Error('too few dense hairstyles');
 if (hasBrow < seeds.length * 0.55) throw new Error('too few brows');
-if (maxHair > 180) throw new Error(`hair cell bloat: ${maxHair}`);
+if (thickBrow < seeds.length * 0.5) throw new Error('brows too thin');
+if (hasEar < seeds.length * 0.85) throw new Error('too few ears');
+if (hasMustache < seeds.length * 0.4) throw new Error('too few mustaches');
+if (maxHair > 220) throw new Error(`hair cell bloat: ${maxHair}`);
 if (maxParticles > PARTICLE_BUDGET) throw new Error(`particle bloat: ${maxParticles}`);
 if (floatingSum > 0) throw new Error(`floating face features total=${floatingSum}`);
 

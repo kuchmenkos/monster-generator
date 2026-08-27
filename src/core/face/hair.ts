@@ -5,7 +5,7 @@ import { cellKey } from '../types';
 import { putCell } from './shading';
 import type { HairStyle } from './types';
 
-/** Head hair manes — 6–18 strands, capped cells for perf (~120). */
+/** Head hair — crown cap + thick strands for readable shevelura. */
 export function paintHair(
   grid: MonsterGrid,
   rng: Rng,
@@ -26,14 +26,30 @@ export function paintHair(
 
   const midC = Math.round((minC + maxC) / 2);
   let painted = 0;
-  const budget = Math.min(120, Math.round(90 * grid.scaleRef * 0.55));
+  const budget = Math.min(180, Math.round(130 * grid.scaleRef * 0.55));
 
   const color = palette.hair;
   const tipColor = lighten(palette.hair, 0.12);
 
+  // Solid crown cap (2–3 rows) so hair reads as a mass, not wiry sticks
+  if (style !== 'bald_patch') {
+    const capRows = rng.int(2, 3);
+    for (const c of crown) {
+      for (let dy = 1; dy <= capRows && painted < budget; dy++) {
+        putCell(grid, c.col, c.row + dy, c, dy === capRows ? tipColor : color, 'hair', {
+          zBoost: 0.02 + dy * 0.01,
+          tipFactor: dy / (capRows + 2),
+          hairStrand: 0,
+          size: 1,
+          phase: c.phase,
+        });
+        painted++;
+      }
+    }
+  }
+
   if (style === 'bald_patch') {
-    // Thin ring only
-    const ring = crown.filter((c) => c.col <= minC + 2 || c.col >= maxC - 2).slice(0, 8);
+    const ring = crown.filter((c) => c.col <= minC + 2 || c.col >= maxC - 2).slice(0, 10);
     for (let i = 0; i < ring.length; i++) {
       growStrand(grid, rng, ring[i]!, color, tipColor, rng.int(2, 4), i, budget, () => painted++);
     }
@@ -42,14 +58,16 @@ export function paintHair(
 
   const strandCount =
     style === 'afro_puff'
-      ? rng.int(8, 12)
+      ? rng.int(14, 22)
       : style === 'spikes'
-        ? rng.int(4, 7)
+        ? rng.int(6, 10)
         : style === 'braid'
           ? rng.int(2, 3)
           : style === 'mohawk'
-            ? rng.int(4, 6)
-            : rng.int(4, 10);
+            ? rng.int(8, 12)
+            : style === 'wild_mane' || style === 'curtain'
+              ? rng.int(12, 18)
+              : rng.int(10, 16);
 
   for (let s = 0; s < strandCount && painted < budget; s++) {
     let anchor: GridCell;
@@ -73,7 +91,7 @@ export function paintHair(
       style === 'braid'
         ? rng.int(5, 9)
         : style === 'spikes'
-          ? rng.int(3, 5)
+          ? rng.int(4, 6)
           : style === 'afro_puff'
             ? rng.int(3, 5)
             : rng.int(4, 8);
@@ -88,6 +106,31 @@ export function paintHair(
       growStrand(grid, rng, anchor, color, tipColor, len, s, budget, () => painted++);
     }
   }
+}
+
+function paintHairCell(
+  grid: MonsterGrid,
+  col: number,
+  row: number,
+  start: GridCell,
+  color: number,
+  tip: number,
+  strandId: number,
+  onPaint: () => void,
+): void {
+  const existing = grid.cells.get(cellKey(col, row));
+  if (existing && (existing.part === 'eye' || existing.part === 'pupil' || existing.part === 'mouth')) {
+    return;
+  }
+  // Allow hair-on-hair overlap (thickens mane)
+  putCell(grid, col, row, start, color, 'hair', {
+    zBoost: 0.02 + tip * 0.04,
+    tipFactor: tip,
+    hairStrand: strandId,
+    size: Math.max(0.85, 1 - tip * 0.12),
+    phase: start.phase + strandId * 0.7,
+  });
+  onPaint();
 }
 
 function growStrand(
@@ -115,26 +158,15 @@ function growStrand(
     ] as const);
     col += step[0];
     row += step[1];
-    const key = cellKey(col, row);
-    const existing = grid.cells.get(key);
-    if (existing && (existing.part === 'eye' || existing.part === 'pupil' || existing.part === 'mouth')) {
-      break;
-    }
+    const existing = grid.cells.get(cellKey(col, row));
     if (existing && existing.part === 'body') {
       col += outDir;
-      if (grid.cells.has(cellKey(col, row))) break;
-    } else if (existing && existing.part === 'hair') {
-      break;
     }
     const tip = i / len;
-    putCell(grid, col, row, start, tip > 0.7 ? tipColor : color, 'hair', {
-      zBoost: 0.02 + tip * 0.04,
-      tipFactor: tip,
-      hairStrand: strandId,
-      size: Math.max(0.5, 1 - tip * 0.4),
-      phase: start.phase + strandId * 0.7,
-    });
-    onPaint();
+    const c = tip > 0.7 ? tipColor : color;
+    paintHairCell(grid, col, row, start, c, tip, strandId, onPaint);
+    // Width-2 strand core
+    paintHairCell(grid, col + outDir, row, start, c, tip, strandId, onPaint);
   }
 }
 
@@ -150,14 +182,9 @@ function growSpike(
 ): void {
   for (let i = 1; i <= len; i++) {
     const tip = i / len;
-    putCell(grid, start.col, start.row + i, start, tip > 0.7 ? tipColor : color, 'hair', {
-      zBoost: 0.025 + tip * 0.03,
-      tipFactor: tip,
-      hairStrand: strandId,
-      size: Math.max(0.45, 1 - tip * 0.55),
-      phase: start.phase + strandId,
-    });
-    onPaint();
+    const c = tip > 0.7 ? tipColor : color;
+    paintHairCell(grid, start.col, start.row + i, start, c, tip, strandId, onPaint);
+    paintHairCell(grid, start.col + 1, start.row + i, start, c, tip, strandId, onPaint);
   }
 }
 
@@ -177,16 +204,23 @@ function growPuff(
     [0, 2],
     [1, 2],
     [-1, 2],
+    [2, 1],
+    [-2, 1],
+    [0, 3],
+    [1, 3],
+    [-1, 3],
   ] as const) {
-    if (rng.chance(0.2)) continue;
-    putCell(grid, start.col + dx, start.row + dy, start, dy > 1 ? tipColor : color, 'hair', {
-      zBoost: 0.03,
-      tipFactor: 0.4 + dy * 0.2,
-      hairStrand: strandId,
-      size: 0.85,
-      phase: start.phase + strandId * 0.5,
-    });
-    onPaint();
+    if (rng.chance(0.12)) continue;
+    paintHairCell(
+      grid,
+      start.col + dx,
+      start.row + dy,
+      start,
+      dy > 1 ? tipColor : color,
+      0.4 + dy * 0.15,
+      strandId,
+      onPaint,
+    );
   }
 }
 
@@ -206,15 +240,10 @@ function growBraid(
   const side = strandId % 2 === 0 ? -1 : 1;
   for (let i = 1; i <= len && i <= budget; i++) {
     col += side * (i % 2 === 0 ? 1 : 0);
-    row -= 1; // hang down (world Y up = higher row, so hanging = decreasing row)
+    row -= 1;
     const tip = i / len;
-    putCell(grid, col, row, start, tip > 0.75 ? tipColor : darken(color, tip * 0.1), 'hair', {
-      zBoost: 0.028,
-      tipFactor: tip,
-      hairStrand: strandId,
-      size: 0.8,
-      phase: start.phase + strandId,
-    });
-    onPaint();
+    const c = tip > 0.75 ? tipColor : darken(color, tip * 0.1);
+    paintHairCell(grid, col, row, start, c, tip, strandId, onPaint);
+    paintHairCell(grid, col + side, row, start, c, tip, strandId, onPaint);
   }
 }
