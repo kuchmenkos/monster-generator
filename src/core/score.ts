@@ -122,18 +122,52 @@ export function scoreMonster(data: MonsterData): number {
     if (pu.pupilRange && pu.pupilRange.x > 0) score += 1;
   }
 
+  // boolala.boo face richness
+  const noses = data.particles.filter((p) => p.part === 'nose');
+  const brows = data.particles.filter((p) => p.part === 'brow');
+  const lashes = data.particles.filter((p) => p.part === 'lash');
+  const hair = data.particles.filter((p) => p.part === 'hair');
+  const freckles = data.particles.filter((p) => p.part === 'freckle');
+  const ears = data.particles.filter((p) => p.part === 'ear');
+  if (noses.length > 0) score += 4;
+  if (brows.length >= 2) score += 3;
+  else if (brows.length === 1) score += 1;
+  if (lashes.length > 0) score += 2;
+  if (hair.length >= 8) score += 3;
+  else if (hair.length >= 4) score += 1;
+  if (freckles.length > 0) score += 2;
+  if (ears.length >= 2) score += 2;
+
+  // Asymmetry bonus — different faceSide counts
+  const leftFace = data.particles.filter((p) => p.faceSide === -1).length;
+  const rightFace = data.particles.filter((p) => p.faceSide === 1).length;
+  if (leftFace > 0 && rightFace > 0 && Math.abs(leftFace - rightFace) > 2) score += 3;
+
+  // Reject extreme particle bloat (lag guard)
+  if (data.particles.length > 4200) score -= 40;
+  if (hair.length > 160) score -= 15;
+
   // --- Limbs / flecks ---
   const limbs = data.particles.filter((p) => p.part === 'appendage');
   const flecks = data.particles.filter((p) => p.part === 'fleck');
   if (limbs.length >= 8) score += 10;
   else if (limbs.length >= 3) score += 4;
   else score -= 6;
-  if (flecks.length >= 4) score += 4;
+  if (flecks.length >= 4 || hair.length >= 6) score += 4;
 
   // Prefer non-boxy archetypes slightly
   if (data.archetype === 'column' || data.archetype === 'wide' || data.archetype === 'stack') score -= 40;
   if (data.archetype === 'lanky' || data.archetype === 'bighead' || data.archetype === 'pear') {
     score += 3;
+  }
+  if (
+    data.archetype === 'egg' ||
+    data.archetype === 'dumpling' ||
+    data.archetype === 'teardrop' ||
+    data.archetype === 'hourglass' ||
+    data.archetype === 'star'
+  ) {
+    score += 4;
   }
   if (data.archetype === 'slug') score -= 4;
 

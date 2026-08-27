@@ -1,6 +1,6 @@
-# Monster Generator
+# boolala.boo
 
-Процедурні монстри з частинок у стилі *Aaahh!!! Real Monsters*.
+Процедурні булалашки з частинок — дивні обличчя, живе волосся, асиметрія.
 
 ## Запуск
 
@@ -11,22 +11,23 @@ npm run dev
 
 Відкрий http://localhost:5173
 
-## Що є в MVP
+## Що є
 
 - Детермінована генерація за `seed` (один seed → завжди той самий монстр)
-- 3D-поле metaball'ів → хмара частинок з нормалями й глибиною (без пресетних спрайтів)
-- Псевдо-3D: світлотінь по нормалях + паралакс у idle (передні частинки рухаються сильніше)
-- Жива idle-анімація: дихання, погойдування, джиґл, моргання, підстрибування
-- Галерея з cull'інгом, детальний вигляд, `?seed=` у URL, експорт PNG
+- Metaball field → хмара частинок з нормалями й глибиною
+- Багаті обличчя: очі, брови, віки, вії, ніс, вуха, зуби, клики, волосся
+- Жива idle-анімація: дихання, погойдування, моргання, хвилі волосся
+- Галерея, детальний вигляд, `?seed=` у URL, експорт PNG
 
 ## Стек
 
-TypeScript · Vite · PixiJS 8 (`ParticleContainer` для батченого рендеру частинок)
+TypeScript · Vite · PixiJS 8 (`ParticleContainer`)
 
 ## Структура
 
 ```
-src/core/     # чиста генерація (rng, palette, field, particles, features, monster)
-src/render/   # MonsterView — анімована хмара частинок
-src/app/      # gallery, detail, ui
+src/core/       # генерація (rng, palette, field, particles, face/, monster)
+src/core/face/  # очі, брови, віки, вії, ніс, вуха, рот, зуби, волосся, клики
+src/render/     # MonsterView — анімована хмара частинок
+src/app/        # gallery, detail, ui
 ```

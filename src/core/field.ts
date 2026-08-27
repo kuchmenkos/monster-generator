@@ -11,7 +11,12 @@ export type BodyArchetype =
   | 'lanky'
   | 'slug'
   | 'bighead'
-  | 'stack';
+  | 'stack'
+  | 'egg'
+  | 'dumpling'
+  | 'teardrop'
+  | 'hourglass'
+  | 'star';
 
 /**
  * Build a continuous 3D metaball field (no preset sprites).
@@ -22,8 +27,6 @@ export function createBlobs(rng: Rng): { blobs: Blob[]; archetype: BodyArchetype
   const archetype = rng.pick<BodyArchetype>([
     'blob',
     'blob',
-    'blob',
-    'pear',
     'pear',
     'pear',
     'mushroom',
@@ -34,6 +37,11 @@ export function createBlobs(rng: Rng): { blobs: Blob[]; archetype: BodyArchetype
     'slug',
     'bighead',
     'bighead',
+    'egg',
+    'dumpling',
+    'teardrop',
+    'hourglass',
+    'star',
   ]);
 
   const blobs: Blob[] = [];
@@ -150,6 +158,48 @@ export function createBlobs(rng: Rng): { blobs: Blob[]; archetype: BodyArchetype
         ry = rng.float(0.16, 0.26);
         rz = segW * rng.float(0.7, 0.95);
         x = rng.float(-0.12, 0.12);
+        break;
+      }
+      case 'egg':
+        y = -0.35 + t * 0.85;
+        rx = rng.float(0.28, 0.4) * (0.75 + t * 0.35);
+        ry = rng.float(0.32, 0.48);
+        rz = rng.float(0.24, 0.36) * (0.8 + t * 0.25);
+        x = rng.float(-0.08, 0.08);
+        break;
+      case 'dumpling':
+        x = rng.float(-0.28, 0.28);
+        y = rng.float(-0.22, 0.22);
+        z = rng.float(-0.18, 0.18);
+        rx = rng.float(0.38, 0.58);
+        ry = rng.float(0.28, 0.42);
+        rz = rng.float(0.3, 0.48);
+        break;
+      case 'teardrop':
+        y = -0.4 + t * 0.95;
+        rx = rng.float(0.3, 0.5) * (1.15 - t * 0.55);
+        ry = rng.float(0.26, 0.4);
+        rz = rng.float(0.24, 0.4) * (1.1 - t * 0.4);
+        x = rng.float(-0.1, 0.1);
+        break;
+      case 'hourglass': {
+        y = -0.45 + t * 1.0;
+        // Wide ends, controlled waist — min width floor so not peanut
+        const waist = 0.55 + Math.abs(t - 0.5) * 0.9;
+        rx = rng.float(0.28, 0.42) * waist;
+        ry = rng.float(0.22, 0.34);
+        rz = rng.float(0.22, 0.36) * waist;
+        x = rng.float(-0.08, 0.08);
+        break;
+      }
+      case 'star': {
+        const a = (i / Math.max(1, bodyCount)) * Math.PI * 2;
+        x = Math.cos(a) * rng.float(0.2, 0.4);
+        y = Math.sin(a) * rng.float(0.18, 0.38);
+        z = rng.float(-0.12, 0.12);
+        rx = rng.float(0.2, 0.35);
+        ry = rng.float(0.18, 0.32);
+        rz = rng.float(0.16, 0.28);
         break;
       }
     }

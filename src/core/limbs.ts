@@ -383,35 +383,6 @@ function addAntennae(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void
   }
 }
 
-function addEars(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
-  const top = findTopEdge(torsoCells(grid));
-  if (top.length < 2) return;
-  const mid = (Math.min(...top.map((c) => c.col)) + Math.max(...top.map((c) => c.col))) / 2;
-  const left = top.filter((c) => c.col <= mid).sort((a, b) => a.col - b.col)[0];
-  const right = top.filter((c) => c.col >= mid).sort((a, b) => b.col - a.col)[0];
-  if (!left || !right) return;
-
-  const tall = s(grid, rng.int(2, 4));
-  const wide = Math.max(1, s(grid, rng.int(1, 2)));
-
-  for (const [anchor, dir] of [
-    [left, -1],
-    [right, 1],
-  ] as const) {
-    for (let r = 1; r <= tall; r++) {
-      for (let w = 1; w <= wide; w++) {
-        if (r > tall * 0.6 && w > Math.ceil(wide * 0.6)) continue;
-        const tip = r / tall;
-        const color = limbTint(palette, tip);
-        put(
-          grid,
-          makeLimbCell(grid, anchor, anchor.col + dir * (w - 1), anchor.row + r, tip, color, rng),
-        );
-      }
-    }
-  }
-}
-
 function addLongLegs(
   grid: MonsterGrid,
   rng: Rng,
@@ -485,8 +456,9 @@ export function applyLimbs(
 
   if (archetype === 'bighead') {
     addLongLegs(grid, rng, palette, s(grid, rng.int(2, 4)));
-    if (rng.chance(0.4)) addEars(grid, rng, palette);
-    else if (rng.chance(0.5)) addHorns(grid, rng, palette);
+    // Facial ears come from face module — head adornments: horns/antennae only
+    if (rng.chance(0.55)) addHorns(grid, rng, palette);
+    else if (rng.chance(0.4)) addAntennae(grid, rng, palette);
     return;
   }
 
@@ -495,18 +467,15 @@ export function applyLimbs(
   if (rng.chance(0.35)) addTail(grid, rng, palette);
   if (rng.chance(0.2)) addWings(grid, rng, palette);
 
-  const headStyles = rng.shuffle(['horns', 'antennae', 'ears'] as const);
+  const headStyles = rng.shuffle(['horns', 'antennae'] as const);
   const headCount = rng.pick([1, 1, 2]);
-  for (let i = 0; i < headCount; i++) {
+  for (let i = 0; i < headCount && i < headStyles.length; i++) {
     switch (headStyles[i]) {
       case 'horns':
         addHorns(grid, rng, palette);
         break;
       case 'antennae':
         addAntennae(grid, rng, palette);
-        break;
-      case 'ears':
-        addEars(grid, rng, palette);
         break;
     }
   }
