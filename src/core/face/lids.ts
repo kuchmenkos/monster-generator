@@ -1,6 +1,6 @@
 import type { Rng } from '../rng';
 import type { GridCell, MonsterGrid, MonsterPalette } from '../types';
-import { putCell } from './shading';
+import { nearestBodyColor, putCell } from './shading';
 import type { EyeSlot, LidStyle } from './types';
 
 export function paintLids(
@@ -37,35 +37,34 @@ function paintOneLid(
             ? 0.25
             : 0.15;
 
-  // Upper lid — ONLY existing eye cells (never empty bbox corners / !cell)
-  const upperRows = Math.max(1, Math.floor(eye.h * cover));
+  // Small eyes: one row only — a multi-row palette.base stamp reads as a texture slice
+  const upperRows =
+    eye.h < 6 ? 1 : Math.max(1, Math.floor(eye.h * cover));
+
   for (let dy = 0; dy < upperRows; dy++) {
     for (let dx = 0; dx < eye.w; dx++) {
-      const cell = grid.cells.get(`${eye.x + dx},${eye.y + eye.h - 1 - dy}`);
-      if (cell?.part !== 'eye') continue; // not pupil, not empty
-      putCell(
-        grid,
-        eye.x + dx,
-        eye.y + eye.h - 1 - dy,
-        base,
-        palette.base,
-        'eyelid',
-        {
-          zBoost: 0.052,
-          lidRole: 'upper',
-          faceSide: eye.side === 0 ? undefined : eye.side,
-          allowOverwrite: ['eye'],
-        },
-      );
+      const col = eye.x + dx;
+      const row = eye.y + eye.h - 1 - dy;
+      const cell = grid.cells.get(`${col},${row}`);
+      if (cell?.part !== 'eye') continue;
+      const tint = nearestBodyColor(grid, col, row + 1, palette.shadow);
+      putCell(grid, col, row, base, tint, 'eyelid', {
+        zBoost: 0.052,
+        lidRole: 'upper',
+        faceSide: eye.side === 0 ? undefined : eye.side,
+        allowOverwrite: ['eye'],
+      });
     }
   }
 
-  // Lower lid — only eye rim cells (1 row), never full-rect stamp
   if (style === 'droopy' || style === 'wide' || style === 'heavy') {
     for (let dx = 0; dx < eye.w; dx++) {
-      const cell = grid.cells.get(`${eye.x + dx},${eye.y}`);
+      const col = eye.x + dx;
+      const row = eye.y;
+      const cell = grid.cells.get(`${col},${row}`);
       if (cell?.part !== 'eye') continue;
-      putCell(grid, eye.x + dx, eye.y, base, palette.shadow, 'eyelid', {
+      const tint = nearestBodyColor(grid, col, row - 1, palette.shadow);
+      putCell(grid, col, row, base, tint, 'eyelid', {
         zBoost: 0.051,
         lidRole: 'lower',
         faceSide: eye.side === 0 ? undefined : eye.side,

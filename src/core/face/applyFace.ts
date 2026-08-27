@@ -33,7 +33,7 @@ export function applyFace(
   const recipe = rollFaceRecipe(rng, bodyArchetype);
   const { midC, faceW, faceH, mouthBandR, noseR, base, eyeBandR } = layout;
 
-  const eyes = buildEyeSlots(layout, recipe, rng, grid.scaleRef);
+  const eyes = buildEyeSlots(grid, layout, recipe, rng);
   if (eyes.length === 0) return;
 
   for (const e of eyes) {

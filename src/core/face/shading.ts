@@ -10,6 +10,23 @@ const PROTECTED_PARTS: ReadonlySet<ParticlePart> = new Set([
   'tooth',
 ]);
 
+/** These must overwrite an existing body/face cell — never spawn into void (left-eye smear). */
+const SILHOUETTE_CLIPPED: ReadonlySet<ParticlePart> = new Set([
+  'eye',
+  'pupil',
+  'outline',
+  'eyelid',
+  'brow',
+]);
+
+/** Face parts that must not auto-cast a rightward shadow onto the left eye. */
+const NO_AUTO_SHADOW: ReadonlySet<ParticlePart> = new Set([
+  'ear',
+  'brow',
+  'lash',
+  'mustache',
+]);
+
 export interface PaintOpts {
   zBoost?: number;
   size?: number;
@@ -34,6 +51,65 @@ export interface PaintOpts {
 
 export function bodyOnly(grid: MonsterGrid): GridCell[] {
   return [...grid.cells.values()].filter((c) => c.part === 'body');
+}
+
+/** Min/max body columns on a single row, or null if the row has no body. */
+export function bodySpanAtRow(
+  grid: MonsterGrid,
+  row: number,
+): { minC: number; maxC: number } | null {
+  let minC = Infinity;
+  let maxC = -Infinity;
+  for (const c of grid.cells.values()) {
+    if (c.part !== 'body' || c.row !== row) continue;
+    if (c.col < minC) minC = c.col;
+    if (c.col > maxC) maxC = c.col;
+  }
+  if (!Number.isFinite(minC)) return null;
+  return { minC, maxC };
+}
+
+/** Tightest body span across a row band (intersection) — used to clamp eyes on tapers. */
+export function bodySpanBand(
+  grid: MonsterGrid,
+  rowLo: number,
+  rowHi: number,
+): { minC: number; maxC: number } | null {
+  let minC = -Infinity;
+  let maxC = Infinity;
+  let found = false;
+  const lo = Math.min(rowLo, rowHi);
+  const hi = Math.max(rowLo, rowHi);
+  for (let r = lo; r <= hi; r++) {
+    const s = bodySpanAtRow(grid, r);
+    if (!s) continue;
+    found = true;
+    minC = Math.max(minC, s.minC);
+    maxC = Math.min(maxC, s.maxC);
+  }
+  if (!found || minC > maxC) return bodySpanAtRow(grid, Math.round((lo + hi) / 2));
+  return { minC, maxC };
+}
+
+/** Color of the nearest body cell (for lids/ears that should match the coat). */
+export function nearestBodyColor(
+  grid: MonsterGrid,
+  col: number,
+  row: number,
+  fallback: number,
+): number {
+  const self = grid.cells.get(cellKey(col, row));
+  if (self?.part === 'body') return self.color;
+  for (let r = 1; r <= 3; r++) {
+    for (let dr = -r; dr <= r; dr++) {
+      for (let dc = -r; dc <= r; dc++) {
+        if (Math.abs(dc) + Math.abs(dr) !== r) continue;
+        const nb = grid.cells.get(cellKey(col + dc, row + dr));
+        if (nb?.part === 'body') return nb.color;
+      }
+    }
+  }
+  return fallback;
 }
 
 /** True if col/row is on body (or within softRadius ortho/manhattan steps). */
@@ -98,6 +174,10 @@ export function putCell(
 ): void {
   const key = cellKey(col, row);
   const existing = grid.cells.get(key);
+  if (SILHOUETTE_CLIPPED.has(part)) {
+    // Never paint eye/outline/lid/brow into empty space (hanging left-eye smear)
+    if (!existing || existing.part === 'aura') return;
+  }
   if (existing && PROTECTED_PARTS.has(existing.part)) {
     const allow = opts.allowOverwrite ?? [];
     if (!allow.includes(existing.part)) {
@@ -154,7 +234,8 @@ export function paintWithShadow(
 
   putCell(grid, col, row, base, fillColor, part, opts);
 
-  if (opts.shadow) {
+  // Hardcoded +1 shadow lands on the left eye for left-side ears — skip for face hair-likes
+  if (opts.shadow && !NO_AUTO_SHADOW.has(part)) {
     const sc = col + 1;
     const sr = row - 1;
     if (!grid.cells.has(cellKey(sc, sr)) || grid.cells.get(cellKey(sc, sr))?.part === 'body') {
@@ -229,7 +310,12 @@ export function paintOutlineRing(
       }
     }
     if (!touches) continue;
-    putCell(grid, originCol + xs, originRow + ys, base, outlineColor, 'outline', {
+    const col = originCol + xs;
+    const row = originRow + ys;
+    const existing = grid.cells.get(cellKey(col, row));
+    // Outline only on body (or an existing face cell) — never a void shard off-silhouette
+    if (!existing || existing.part === 'aura') continue;
+    putCell(grid, col, row, base, outlineColor, 'outline', {
       zBoost: 0.03,
     });
   }

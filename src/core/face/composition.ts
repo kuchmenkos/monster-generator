@@ -1,5 +1,6 @@
 import type { Rng } from '../rng';
 import type { GridCell, MonsterGrid } from '../types';
+import { bodySpanAtRow, bodySpanBand } from './shading';
 import type {
   BrowStyle,
   EarStyle,
@@ -268,15 +269,15 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
   }
 }
 
-/** Build eye slots from layout + recipe — always body-centered. */
+/** Build eye slots from layout + recipe — clamped to body span at the eye band. */
 export function buildEyeSlots(
+  grid: MonsterGrid,
   layout: FaceLayout,
   recipe: FaceRecipe,
   rng: Rng,
-  scaleRef: number,
 ): EyeSlot[] {
   const { midC, faceW, eyeBandR } = layout;
-  const eScale = Math.max(1, Math.round(scaleRef * 0.85));
+  const eScale = Math.max(1, Math.round(grid.scaleRef * 0.85));
   const eyes: EyeSlot[] = [];
 
   if (recipe.eyeArchetype === 'cyclops-giant') {
@@ -290,7 +291,7 @@ export function buildEyeSlots(
       shape: recipe.eyeShapes[0] ?? 'round',
       side: 0,
     });
-    return eyes;
+    return clampEyesToSilhouette(grid, eyes);
   }
 
   if (recipe.eyeArchetype === 'mismatched') {
@@ -315,11 +316,10 @@ export function buildEyeSlots(
       shape: recipe.eyeShapes[1] ?? 'square',
       side: 1,
     });
-    return eyes;
+    return clampEyesToSilhouette(grid, eyes);
   }
 
   if (recipe.eyeArchetype === 'cluster') {
-    // Three small eyes — odd but readable
     const w = Math.max(2, Math.min(4, Math.floor(faceW * 0.16)));
     const h = rng.chance(0.5) ? w : Math.max(2, w - 1);
     const spread = Math.max(w + 1, Math.floor(faceW * 0.22));
@@ -348,10 +348,9 @@ export function buildEyeSlots(
       shape: recipe.eyeShapes[1] ?? 'round',
       side: 1,
     });
-    return eyes;
+    return clampEyesToSilhouette(grid, eyes);
   }
 
-  // masks / goggle — varied aspect ratios (not always square round)
   const baseW = Math.max(3, Math.min(7 + eScale, Math.floor(faceW * 0.28)));
   const sL = recipe.eyeShapes[0] ?? 'round';
   const sR = recipe.eyeShapes[1] ?? sL;
@@ -387,5 +386,31 @@ export function buildEyeSlots(
     shape: sR,
     side: 1,
   });
-  return eyes;
+  return clampEyesToSilhouette(grid, eyes);
+}
+
+/** Shrink/shift slots so they sit inside the body span of their row band (pad 1). */
+function clampEyesToSilhouette(grid: MonsterGrid, eyes: EyeSlot[]): EyeSlot[] {
+  const out: EyeSlot[] = [];
+  for (const eye of eyes) {
+    const span =
+      bodySpanBand(grid, eye.y, eye.y + eye.h - 1) ??
+      bodySpanAtRow(grid, eye.y + Math.floor(eye.h / 2));
+    if (!span) continue;
+    const lo = span.minC + 1;
+    const hi = span.maxC - 1;
+    if (hi - lo < 1) continue;
+
+    let { x, w, y, h, shape, side } = eye;
+    if (x < lo) {
+      w -= lo - x;
+      x = lo;
+    }
+    if (x + w - 1 > hi) w = hi - x + 1;
+    w = Math.max(2, w);
+    h = Math.max(2, Math.min(h, w + 2));
+    if (x < lo || x + w - 1 > hi) continue;
+    out.push({ x, y, w, h, shape, side });
+  }
+  return out;
 }

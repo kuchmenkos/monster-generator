@@ -15,6 +15,7 @@ const totals = {
   mustacheOnMouth: 0,
   eyeLattice: 0,
   orphanLashEar: 0,
+  silhouetteLeak: 0,
 };
 
 for (const seed of seeds) {
@@ -27,6 +28,7 @@ for (const seed of seeds) {
   totals.mustacheOnMouth += r.mustacheOnMouth;
   totals.eyeLattice += r.eyeLattice;
   totals.orphanLashEar += r.orphanLashEar;
+  totals.silhouetteLeak += r.silhouetteLeak;
 }
 
 const total = sumDefects(totals);
@@ -39,5 +41,6 @@ if (totals.hairOverEye > 0) throw new Error(`defect: hairOverEye=${totals.hairOv
 if (totals.mustacheOnMouth > 0) throw new Error(`defect: mustacheOnMouth=${totals.mustacheOnMouth}`);
 if (totals.eyeLattice > 0) throw new Error(`defect: eyeLattice=${totals.eyeLattice}`);
 if (totals.orphanLashEar > 0) throw new Error(`defect: orphanLashEar=${totals.orphanLashEar}`);
+if (totals.silhouetteLeak > 0) throw new Error(`defect: silhouetteLeak=${totals.silhouetteLeak}`);
 
 console.log('layer-integrity OK');

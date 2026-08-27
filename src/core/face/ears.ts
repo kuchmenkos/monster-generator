@@ -2,19 +2,20 @@ import { darken, lighten } from '../palette';
 import type { Rng } from '../rng';
 import type { GridCell, MonsterGrid, MonsterPalette } from '../types';
 import { cellKey } from '../types';
-import { nearBody, paintWithShadow, putCell } from './shading';
+import { bodySpanAtRow, nearBody, nearestBodyColor, paintWithShadow, putCell } from './shading';
 import type { EarStyle } from './types';
 
 /**
- * Facial ears that protrude past the body rim so they read at thumbnail size.
+ * Facial ears anchored at the real body rim of the eye row — not midC±half
+ * (that landed the left stalk on the left eye). No auto-shadow toward the face.
  */
 export function paintFacialEars(
   grid: MonsterGrid,
   rng: Rng,
   palette: MonsterPalette,
-  midC: number,
+  _midC: number,
   eyeY: number,
-  faceW: number,
+  _faceW: number,
   base: GridCell,
   style: EarStyle,
 ): void {
@@ -31,29 +32,16 @@ export function paintFacialEars(
         ? (rng.pick(['lobe', 'pointy', 'floppy', 'notch', 'bat', 'shell'] as EarStyle[]) as EarStyle)
         : leftStyle;
 
-  const half = Math.max(3, Math.floor(faceW * 0.5)) + rng.int(1, 2);
-  paintOneEar(grid, rng, palette, midC - half, eyeY, -1, base, leftStyle);
-  paintOneEar(grid, rng, palette, midC + half, eyeY + rng.int(-1, 1), 1, base, rightStyle);
+  const span = bodySpanAtRow(grid, eyeY) ?? bodySpanAtRow(grid, eyeY + 1) ?? bodySpanAtRow(grid, eyeY - 1);
+  if (!span) return;
+
+  paintOneEar(grid, rng, palette, span.minC, eyeY, -1, base, leftStyle);
+  paintOneEar(grid, rng, palette, span.maxC, eyeY + rng.int(-1, 1), 1, base, rightStyle);
 }
 
-function nearestBodyColor(
-  grid: MonsterGrid,
-  col: number,
-  row: number,
-  fallback: number,
-): number {
+function tooCloseToEye(grid: MonsterGrid, col: number, row: number): boolean {
   const self = grid.cells.get(cellKey(col, row));
-  if (self?.part === 'body') return self.color;
-  for (let r = 1; r <= 3; r++) {
-    for (let dr = -r; dr <= r; dr++) {
-      for (let dc = -r; dc <= r; dc++) {
-        if (Math.abs(dc) + Math.abs(dr) !== r) continue;
-        const nb = grid.cells.get(cellKey(col + dc, row + dr));
-        if (nb?.part === 'body') return nb.color;
-      }
-    }
-  }
-  return fallback;
+  return !!self && (self.part === 'eye' || self.part === 'pupil' || self.part === 'eyelid');
 }
 
 function paintOneEar(
@@ -66,14 +54,17 @@ function paintOneEar(
   base: GridCell,
   style: EarStyle,
 ): void {
-  const bodyTint = nearestBodyColor(grid, anchorC - side, anchorR, palette.base);
+  const bodyTint = nearestBodyColor(grid, anchorC, anchorR, palette.base);
   const color = lighten(bodyTint, 0.08);
   const outline = darken(palette.outline, 0.05);
   const tip = palette.accent;
 
-  // Guaranteed stalk toward body (4-connected bridge)
+  // Stalk only on existing body, inward from rim — never onto the eye
   for (let s = 0; s <= 2; s++) {
     const col = anchorC - side * s;
+    const existing = grid.cells.get(cellKey(col, anchorR));
+    if (!existing || existing.part !== 'body') continue;
+    if (tooCloseToEye(grid, col, anchorR)) continue;
     putCell(grid, col, anchorR, base, color, 'ear', {
       zBoost: 0.035,
       tipFactor: 0.15,
@@ -84,6 +75,7 @@ function paintOneEar(
   const paint = (dc: number, dr: number, tipF = 0, accent = false) => {
     const col = anchorC + dc;
     const row = anchorR + dr;
+    if (tooCloseToEye(grid, col, row)) return;
     if (!nearBody(grid, col, row, true, 2) && tipF < 0.25) return;
     const useAccent = accent && tipF > 0.7;
     paintWithShadow(grid, col, row, base, useAccent ? tip : color, 'ear', {
@@ -92,7 +84,7 @@ function paintOneEar(
       softRadius: 2,
       tipFactor: tipF,
       faceSide: side,
-      shadow: tipF > 0.55,
+      shadow: false,
       size: 1,
     });
     if (tipF > 0.55) {
@@ -102,6 +94,7 @@ function paintOneEar(
         softRadius: 2,
         tipFactor: Math.min(1, tipF + 0.1),
         faceSide: side,
+        shadow: false,
         size: 0.9,
       });
     }

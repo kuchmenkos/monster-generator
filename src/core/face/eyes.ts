@@ -33,8 +33,13 @@ export function paintEyeShaped(
   const fillSclera = () => {
     for (const key of mask) {
       const [xs, ys] = key.split(',').map(Number) as [number, number];
+      const col = originCol + xs;
+      const row = originRow + ys;
+      // Only paint sclera on existing body (putCell also clips, skip work off-silhouette)
+      const existing = grid.cells.get(cellKey(col, row));
+      if (!existing || existing.part === 'aura') continue;
       const fill = shape === 'void' ? darken(palette.pupil, 0.1) : palette.eyeWhite;
-      putCell(grid, originCol + xs, originRow + ys, base, fill, 'eye', {
+      putCell(grid, col, row, base, fill, 'eye', {
         zBoost: 0.04,
         faceSide: faceSide === 0 ? undefined : faceSide,
       });

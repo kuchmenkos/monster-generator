@@ -23,6 +23,7 @@ export interface IntegrityReport {
   mustacheOnMouth: number;
   eyeLattice: number;
   orphanLashEar: number;
+  silhouetteLeak: number;
 }
 
 type CellLike = { col: number; row: number; part: ParticlePart };
@@ -247,10 +248,42 @@ export function countOrphanLashEarOnGrid(grid: MonsterGrid): number {
   for (const c of grid.cells.values()) {
     if (c.part !== 'lash' && c.part !== 'ear') continue;
     if (!nearBody(grid, c.col, c.row, true, 1)) {
-      // Ear tips may use soft-2; allow soft-2 for ear only
       if (c.part === 'ear' && nearBody(grid, c.col, c.row, true, 2)) continue;
       n++;
     }
+  }
+  return n;
+}
+
+/**
+ * Eye/outline/lid/brow cells whose column sits outside the body span of this row ±1.
+ * Catches hanging left-eye shards that stay 4-connected through the eye itself.
+ */
+export function countSilhouetteLeak(src: MonsterGrid | Particle[]): number {
+  const entries = toEntries(src);
+  const span = new Map<number, { minC: number; maxC: number }>();
+  for (const e of entries) {
+    if (e.part !== 'body') continue;
+    const s = span.get(e.row);
+    if (!s) span.set(e.row, { minC: e.col, maxC: e.col });
+    else {
+      s.minC = Math.min(s.minC, e.col);
+      s.maxC = Math.max(s.maxC, e.col);
+    }
+  }
+  const leakParts: ReadonlySet<ParticlePart> = new Set(['eye', 'outline', 'eyelid', 'brow']);
+  let n = 0;
+  for (const e of entries) {
+    if (!leakParts.has(e.part)) continue;
+    let ok = false;
+    for (const dr of [-1, 0, 1] as const) {
+      const s = span.get(e.row + dr);
+      if (s && e.col >= s.minC - 1 && e.col <= s.maxC + 1) {
+        ok = true;
+        break;
+      }
+    }
+    if (!ok) n++;
   }
   return n;
 }
@@ -264,6 +297,7 @@ export function auditIntegrity(src: MonsterGrid | Particle[]): IntegrityReport {
     mustacheOnMouth: countMustacheOnMouth(src),
     eyeLattice: countEyeLattice(src),
     orphanLashEar: countOrphanLashEar(src),
+    silhouetteLeak: countSilhouetteLeak(src),
   };
 }
 
@@ -275,6 +309,7 @@ export function sumDefects(r: IntegrityReport): number {
     r.hairOverEye +
     r.mustacheOnMouth +
     r.eyeLattice +
-    r.orphanLashEar
+    r.orphanLashEar +
+    r.silhouetteLeak
   );
 }

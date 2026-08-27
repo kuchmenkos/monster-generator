@@ -1,7 +1,7 @@
 import { darken } from './palette';
 import { dominantKind, fieldNormal, sampleField } from './field';
 import type { Rng } from './rng';
-import type { Blob, GridCell, MonsterGrid, MonsterPalette } from './types';
+import type { Blob, GridCell, MonsterGrid, MonsterPalette, ParticlePart } from './types';
 import { cellKey } from './types';
 
 export interface RasterOptions {
@@ -622,6 +622,48 @@ export function gridToParticles(grid: MonsterGrid) {
     hairStrand: c.hairStrand,
     lidRole: c.lidRole,
   }));
-  particles.sort((a, b) => a.z - b.z);
+  particles.sort((a, b) => a.z - b.z || partDrawOrder(a.part) - partDrawOrder(b.part));
   return particles;
+}
+
+/** Stable tie-break: ear/hair/outline stay behind the eye; pupil last. */
+function partDrawOrder(part: ParticlePart): number {
+  switch (part) {
+    case 'aura':
+      return 0;
+    case 'body':
+      return 1;
+    case 'appendage':
+      return 2;
+    case 'fleck':
+      return 3;
+    case 'ear':
+      return 4;
+    case 'hair':
+      return 5;
+    case 'freckle':
+      return 6;
+    case 'nose':
+      return 7;
+    case 'mouth':
+      return 8;
+    case 'tooth':
+      return 9;
+    case 'mustache':
+      return 10;
+    case 'outline':
+      return 11;
+    case 'eye':
+      return 12;
+    case 'eyelid':
+      return 13;
+    case 'brow':
+      return 14;
+    case 'lash':
+      return 15;
+    case 'pupil':
+      return 16;
+    default:
+      return 10;
+  }
 }
