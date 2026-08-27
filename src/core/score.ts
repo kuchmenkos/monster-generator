@@ -1,4 +1,14 @@
 import type { MonsterData, Particle } from './types';
+import {
+  countEyeLattice,
+  countFloatingBrow,
+  countHairOverEye,
+  countLidOffEye,
+  countMustacheOnMouth,
+  countSilhouetteLeak,
+  countForeheadStamp,
+} from './face/integrity';
+import { countFloatingFaceParticles, PARTICLE_BUDGET } from './face/quality';
 
 const ORTHO: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
@@ -11,9 +21,11 @@ function keyOf(col: number, row: number): string {
   return `${col},${row}`;
 }
 
-/** Appendage cells not 4-connected to any body cell. */
+/** Appendage cells not 4-connected to any body cell (ear counts as a solid bridge). */
 export function countDetachedAppendages(particles: Particle[]): number {
-  const solid = particles.filter((p) => p.part === 'body' || p.part === 'appendage');
+  const solid = particles.filter(
+    (p) => p.part === 'body' || p.part === 'appendage' || p.part === 'ear',
+  );
   if (solid.length === 0) return 0;
   const keys = new Set(solid.map((p) => keyOf(p.col, p.row)));
   const bodyKeys = particles
@@ -110,30 +122,109 @@ export function scoreMonster(data: MonsterData): number {
   const mouths = data.particles.filter(
     (p) => p.part === 'mouth' || p.part === 'tooth',
   );
-  if (eyes.length === 0) score -= 30;
+  if (eyes.length === 0) return -1000; // hard reject — never ship eyeless
   else score += 6;
   if (pupils.length === 0) score -= 10;
   if (mouths.length === 0) score -= 20;
   else score += 6;
   if (mouths.some((p) => p.mouthRole === 'cavity')) score += 4;
+  // Tiny flat mouths (≤4 cells, no cavity) — dislike pattern
+  if (mouths.length > 0 && mouths.length <= 4 && !mouths.some((p) => p.mouthRole === 'cavity')) {
+    score -= 18;
+  }
+  const teeth = data.particles.filter((p) => p.part === 'tooth');
+  if (mouths.length >= 8 && teeth.length === 0) score -= 8;
+  else if (teeth.length > 0) score += 3;
 
   // Pupil within range metadata
   for (const pu of pupils) {
     if (pu.pupilRange && pu.pupilRange.x > 0) score += 1;
   }
 
-  // --- Limbs / flecks ---
+  // boolala.boo face richness
+  const noses = data.particles.filter((p) => p.part === 'nose');
+  const brows = data.particles.filter((p) => p.part === 'brow');
+  const mustaches = data.particles.filter((p) => p.part === 'mustache');
+  const lashes = data.particles.filter((p) => p.part === 'lash');
+  const hair = data.particles.filter((p) => p.part === 'hair');
+  const freckles = data.particles.filter((p) => p.part === 'freckle');
+  const ears = data.particles.filter((p) => p.part === 'ear');
+  if (noses.length > 0) score += 4;
+  if (brows.length >= 2) score += 3;
+  else if (brows.length === 1) score += 1;
+  if (mustaches.length >= 3) score += 2;
+  if (lashes.length > 0) score += 2;
+  if (hair.length >= 8) score += 3;
+  else if (hair.length >= 4) score += 1;
+  if (freckles.length > 0) score += 2;
+  if (ears.length >= 2) score += 2;
+
+  // Asymmetry bonus — different faceSide counts
+  const leftFace = data.particles.filter((p) => p.faceSide === -1).length;
+  const rightFace = data.particles.filter((p) => p.faceSide === 1).length;
+  if (leftFace > 0 && rightFace > 0 && Math.abs(leftFace - rightFace) > 2) score += 3;
+
+  // Floating face features (defects)
+  const floatingFace = countFloatingFaceParticles(data.particles);
+  if (floatingFace > 0) score -= 15 + Math.min(40, floatingFace);
+
+  // Layer integrity defects
+  const lidOff = countLidOffEye(data.particles);
+  if (lidOff > 0) score -= 20 + Math.min(30, lidOff);
+  const floatBrow = countFloatingBrow(data.particles);
+  if (floatBrow > 0) score -= 20 + Math.min(30, floatBrow);
+  const hairEye = countHairOverEye(data.particles);
+  if (hairEye > 0) score -= 20 + Math.min(30, hairEye);
+  const stacheMouth = countMustacheOnMouth(data.particles);
+  if (stacheMouth > 0) score -= 20 + Math.min(30, stacheMouth);
+  const lattice = countEyeLattice(data.particles);
+  if (lattice > 0) score -= 20 + Math.min(30, lattice);
+  const leak = countSilhouetteLeak(data.particles);
+  if (leak > 0) score -= 25 + Math.min(40, leak);
+  const stamp = countForeheadStamp(data.particles);
+  if (stamp > 0) score -= 25 + Math.min(40, stamp);
+
+  // Reject extreme particle bloat (lag guard) — hard reject above budget
+  if (data.particles.length > PARTICLE_BUDGET) return -1000;
+  if (data.particles.length > PARTICLE_BUDGET - 200) score -= 40;
+  if (hair.length > 140) score -= 15;
+
+  // --- Limbs / flecks (limbless: no leg bonus; penalize bottom growths) ---
   const limbs = data.particles.filter((p) => p.part === 'appendage');
   const flecks = data.particles.filter((p) => p.part === 'fleck');
-  if (limbs.length >= 8) score += 10;
-  else if (limbs.length >= 3) score += 4;
-  else score -= 6;
-  if (flecks.length >= 4) score += 4;
+  const bodyOnly = data.particles.filter((p) => p.part === 'body');
+  if (bodyOnly.length > 0 && limbs.length > 0) {
+    const bodyMinR = Math.min(...bodyOnly.map((p) => p.row));
+    const bodyMaxR = Math.max(...bodyOnly.map((p) => p.row));
+    const bodyH = Math.max(1, bodyMaxR - bodyMinR);
+    const legBand = bodyMinR + Math.floor(bodyH * 0.15);
+    const bottomLimbs = limbs.filter((p) => p.row < legBand).length;
+    if (bottomLimbs > 0) score -= 25 + Math.min(30, bottomLimbs);
+    // Head-band appendages (horns/antennae) are OK
+    const headBand = bodyMinR + Math.floor(bodyH * 0.7);
+    const headLimbs = limbs.filter((p) => p.row >= headBand).length;
+    if (headLimbs === limbs.length) score += 3;
+    else if (bottomLimbs === 0) score += 1;
+  } else if (limbs.length === 0) {
+    score += 4; // clean limbless silhouette
+  }
+  if (flecks.length > 6) score -= 8;
+  else if (flecks.length >= 1 && flecks.length <= 3) score += 2;
+  if (hair.length >= 6) score += 2;
 
   // Prefer non-boxy archetypes slightly
   if (data.archetype === 'column' || data.archetype === 'wide' || data.archetype === 'stack') score -= 40;
   if (data.archetype === 'lanky' || data.archetype === 'bighead' || data.archetype === 'pear') {
     score += 3;
+  }
+  if (
+    data.archetype === 'egg' ||
+    data.archetype === 'dumpling' ||
+    data.archetype === 'teardrop' ||
+    data.archetype === 'hourglass' ||
+    data.archetype === 'star'
+  ) {
+    score += 4;
   }
   if (data.archetype === 'slug') score -= 4;
 
@@ -143,9 +234,9 @@ export function scoreMonster(data: MonsterData): number {
   else if (aspect > 0.7 && aspect < 1.3) score -= 5;
   else score += 5;
 
-  // Detached limbs (flood-fill from body)
+  // Detached limbs (flood-fill from body) — hard visual defect
   const detached = countDetachedAppendages(data.particles);
-  if (detached > 0) score -= 40 + Math.min(40, detached);
+  if (detached > 0) score -= 55 + Math.min(50, detached);
 
   // Coat richness — cel-shading + patterns should yield several tones
   const tones = uniqueBodyColors(data.particles);

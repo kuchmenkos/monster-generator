@@ -8,10 +8,20 @@ export type ParticlePart =
   | 'tooth'
   | 'outline'
   | 'aura'
-  | 'fleck';
+  | 'fleck'
+  | 'brow'
+  | 'mustache'
+  | 'eyelid'
+  | 'lash'
+  | 'hair'
+  | 'nose'
+  | 'freckle'
+  | 'ear';
 
 /** Jaw groups for static mouth layout: upper, cavity, lower, tongue. */
 export type MouthRole = 'upper' | 'cavity' | 'lower' | 'tongue';
+
+export type LidRole = 'upper' | 'lower';
 
 export interface Particle {
   x: number;
@@ -41,6 +51,12 @@ export interface Particle {
   pupilRange?: { x: number; y: number };
   /** Bio-glow / antenna tips — pulse alpha in render */
   glow?: boolean;
+  /** Left/right face asymmetry tag */
+  faceSide?: -1 | 1;
+  /** Hair strand group for wave animation */
+  hairStrand?: number;
+  /** Upper/lower eyelid */
+  lidRole?: LidRole;
 }
 
 /** Sparse grid cell used during generation before flattening to particles. */
@@ -62,6 +78,9 @@ export interface GridCell {
   isRim?: boolean;
   pupilRange?: { x: number; y: number };
   glow?: boolean;
+  faceSide?: -1 | 1;
+  hairStrand?: number;
+  lidRole?: LidRole;
 }
 
 export interface MonsterGrid {
@@ -108,6 +127,12 @@ export interface MonsterPalette {
   mouth: number;
   eyeWhite: number;
   pupil: number;
+  /** Brow / lash dark tone */
+  brow: number;
+  /** Hair fill */
+  hair: number;
+  /** Soft cheek blush */
+  cheek: number;
 }
 
 export interface Blob {

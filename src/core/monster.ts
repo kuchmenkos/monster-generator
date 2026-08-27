@@ -1,4 +1,5 @@
 import { applyFeatures } from './features';
+import { enforceParticleBudget, PARTICLE_BUDGET, stripFloatingFaceParticles } from './face/quality';
 import { createBlobs } from './field';
 import { applyLimbs } from './limbs';
 import { generateMonsterName } from './names';
@@ -71,7 +72,10 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
   applyPatterns(rng, grid, palette);
   applyFeatures(rng, grid, palette, archetype);
 
-  const particles = gridToParticles(grid);
+  const particles = enforceParticleBudget(
+    stripFloatingFaceParticles(gridToParticles(grid)),
+    PARTICLE_BUDGET,
+  );
 
   const bounds = computeBounds(particles);
   const cx = (bounds.minX + bounds.maxX) * 0.5;
@@ -101,24 +105,15 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
 export function generateMonster(seed: string): MonsterData {
   let best: MonsterData | null = null;
   let bestScore = -Infinity;
-  let bestLimbed: MonsterData | null = null;
-  let bestLimbedScore = -Infinity;
 
   for (let v = 0; v < CANDIDATE_COUNT; v++) {
     const candidate = generateCandidate(`${seed}#v${v}`, seed);
     const s = scoreMonster(candidate);
-    const limbs = candidate.particles.filter((p) => p.part === 'appendage').length;
     if (s > bestScore) {
       bestScore = s;
       best = candidate;
     }
-    if (limbs >= 8 && s > bestLimbedScore) {
-      bestLimbedScore = s;
-      bestLimbed = candidate;
-    }
   }
 
-  // Prefer a limbed candidate unless the limbless one scores much higher
-  if (bestLimbed && bestLimbedScore >= bestScore - 12) return bestLimbed;
   return best!;
 }
