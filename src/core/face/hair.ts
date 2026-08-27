@@ -11,9 +11,10 @@ interface EyeKeepout {
   maxC: number;
   minR: number;
   maxR: number;
+  maxBodyR: number;
 }
 
-function faceKeepout(grid: MonsterGrid): EyeKeepout | null {
+function faceKeepout(grid: MonsterGrid, maxBodyR: number): EyeKeepout | null {
   let minC = Infinity;
   let maxC = -Infinity;
   let minR = Infinity;
@@ -35,14 +36,16 @@ function faceKeepout(grid: MonsterGrid): EyeKeepout | null {
     minR = Math.min(minR, c.row);
     maxR = Math.max(maxR, c.row);
   }
-  if (!found) return null;
-  return { minC: minC - 2, maxC: maxC + 2, minR: minR - 1, maxR: maxR + 1 };
+  if (!found) return { minC: 0, maxC: 0, minR: 0, maxR: 0, maxBodyR };
+  return { minC: minC - 2, maxC: maxC + 2, minR: minR - 1, maxR: maxR + 2, maxBodyR };
 }
 
 function inKeepout(k: EyeKeepout | null, _col: number, row: number): boolean {
   if (!k) return false;
-  // Entire eye-band rows: temple/curtain hair here is the left-eye rectangle
-  return row >= k.minR && row <= k.maxR;
+  // Never paint hair on the silhouette or in the forehead band above the eyes
+  if (row <= k.maxBodyR) return true;
+  if (row <= k.maxR) return true;
+  return false;
 }
 
 /** Head hair — crown cap + thick strands for readable shevelura. */
@@ -56,21 +59,13 @@ export function paintHair(
   const body = [...grid.cells.values()].filter((c) => c.part === 'body');
   if (body.length < 8) return;
   const maxR = Math.max(...body.map((c) => c.row));
-  const minR = Math.min(...body.map((c) => c.row));
   const minC = Math.min(...body.map((c) => c.col));
   const maxC = Math.max(...body.map((c) => c.col));
-  const h = maxR - minR;
-  const keepout = faceKeepout(grid);
-  // Crown is strictly above the eye/brow band — never the temple or inter-eye gap
-  const crownLo = keepout
-    ? Math.max(keepout.maxR + 1, minR + Math.floor(h * 0.72))
-    : minR + Math.floor(h * 0.72);
-  let crown = body.filter((c) => c.row >= crownLo && !inKeepout(keepout, c.col, c.row));
+  const keepout = faceKeepout(grid, maxR);
+  // Anchors = topmost body rows; paint only grows UP into void
+  let crown = body.filter((c) => c.row >= maxR - 1);
   if (crown.length < 3) {
-    crown = body.filter((c) => c.row >= maxR - 1 && !inKeepout(keepout, c.col, c.row));
-  }
-  if (crown.length < 3) {
-    crown = body.filter((c) => c.row >= maxR - 1);
+    crown = body.filter((c) => c.row >= maxR - 2);
   }
   if (crown.length < 3) return;
 
@@ -185,6 +180,7 @@ function paintHairCell(
 ): void {
   if (inKeepout(keepout, col, row)) return;
   const existing = grid.cells.get(cellKey(col, row));
+  if (existing?.part === 'body') return;
   if (
     existing &&
     (existing.part === 'eye' ||
@@ -276,7 +272,8 @@ function growStrand(
     }
     const existing = grid.cells.get(cellKey(col, row));
     if (existing && existing.part === 'body') {
-      col += outDir;
+      row += 1;
+      continue;
     }
     const tip = i / len;
     const c = tip > 0.7 ? tipColor : color;

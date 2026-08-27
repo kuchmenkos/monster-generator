@@ -19,6 +19,9 @@ const SILHOUETTE_CLIPPED: ReadonlySet<ParticlePart> = new Set([
   'brow',
 ]);
 
+/** Forehead stamp: never replace the coat with brow/lash/hair. */
+const NO_BODY_STAMP: ReadonlySet<ParticlePart> = new Set(['brow', 'lash', 'hair']);
+
 /** Face parts that must not auto-cast a rightward shadow onto the left eye. */
 const NO_AUTO_SHADOW: ReadonlySet<ParticlePart> = new Set([
   'ear',
@@ -179,18 +182,30 @@ export function nearFaceSurface(
   if (c) {
     if (c.part === 'aura') {
       /* fall through */
-    } else if (
-      forPart === 'brow' ||
-      forPart === 'mustache' ||
-      forPart === 'lash'
-    ) {
-      // Don't treat bare eye/pupil as a place to stamp brows/lashes
+    } else if (forPart === 'brow') {
+      // Brows live on the eye rim, never on the coat
+      return c.part === 'eye' || c.part === 'eyelid' || c.part === 'outline';
+    } else if (forPart === 'mustache' || forPart === 'lash') {
+      if (c.part === 'body') return false;
       if (c.part !== 'eye' && c.part !== 'pupil') return true;
     } else {
       return true;
     }
   }
   return nearBody(grid, col, row, soft);
+}
+
+function adjacentEyeish(grid: MonsterGrid, col: number, row: number): boolean {
+  for (const [dc, dr] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    const nb = grid.cells.get(cellKey(col + dc, row + dr));
+    if (nb && (nb.part === 'eye' || nb.part === 'eyelid' || nb.part === 'pupil')) return true;
+  }
+  return false;
 }
 
 export function putCell(
@@ -204,6 +219,7 @@ export function putCell(
 ): void {
   const key = cellKey(col, row);
   const existing = grid.cells.get(key);
+  if (existing?.part === 'body' && NO_BODY_STAMP.has(part)) return;
   if (SILHOUETTE_CLIPPED.has(part)) {
     // Never paint eye/outline/lid/brow into void or onto horns (left-eye smear)
     if (!existing || existing.part === 'aura') return;
@@ -263,10 +279,14 @@ export function paintWithShadow(
   const soft = opts.soft ?? false;
   const softRadius = opts.softRadius ?? 1;
 
-  // Hair / ear / lash always need soft body contact — never skip
-  if (part === 'hair' || part === 'ear' || part === 'lash') {
+  // Hair / ear always need soft body contact. Lashes may sit in void next to the eye.
+  if (part === 'hair' || part === 'ear') {
     const radius = part === 'ear' ? Math.max(2, softRadius) : softRadius;
     if (!nearBody(grid, col, row, true, radius)) return false;
+  } else if (part === 'lash') {
+    if (!nearBody(grid, col, row, true, softRadius) && !adjacentEyeish(grid, col, row)) {
+      return false;
+    }
   } else if (!nearFaceSurface(grid, col, row, soft, part)) {
     if (!nearBody(grid, col, row, true, softRadius)) return false;
   }

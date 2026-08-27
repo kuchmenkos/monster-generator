@@ -6,6 +6,7 @@ import {
   countLidOffEye,
   countMustacheOnMouth,
   countSilhouetteLeak,
+  countForeheadStamp,
 } from './face/integrity';
 import { countFloatingFaceParticles, PARTICLE_BUDGET } from './face/quality';
 
@@ -178,6 +179,8 @@ export function scoreMonster(data: MonsterData): number {
   if (lattice > 0) score -= 20 + Math.min(30, lattice);
   const leak = countSilhouetteLeak(data.particles);
   if (leak > 0) score -= 25 + Math.min(40, leak);
+  const stamp = countForeheadStamp(data.particles);
+  if (stamp > 0) score -= 25 + Math.min(40, stamp);
 
   // Reject extreme particle bloat (lag guard) — hard reject above budget
   if (data.particles.length > PARTICLE_BUDGET) return -1000;

@@ -24,6 +24,7 @@ export interface IntegrityReport {
   eyeLattice: number;
   orphanLashEar: number;
   silhouetteLeak: number;
+  foreheadStamp: number;
 }
 
 type CellLike = { col: number; row: number; part: ParticlePart };
@@ -294,6 +295,29 @@ export function countSilhouetteLeak(src: MonsterGrid | Particle[]): number {
   return n;
 }
 
+/**
+ * Brow/lash/hair sitting on the coat (2+ ortho body, 0 ortho eye) —
+ * the dark forehead stamp above the left eye.
+ */
+export function countForeheadStamp(src: MonsterGrid | Particle[]): number {
+  const entries = toEntries(src);
+  const map = byKeyMap(entries);
+  let n = 0;
+  for (const e of entries) {
+    if (e.part !== 'brow' && e.part !== 'lash' && e.part !== 'hair') continue;
+    let bodyN = 0;
+    let eyeN = 0;
+    for (const [dc, dr] of ORTHO) {
+      const nb = map.get(`${e.col + dc},${e.row + dr}`);
+      if (!nb) continue;
+      if (nb.part === 'body') bodyN++;
+      if (nb.part === 'eye' || nb.part === 'pupil' || nb.part === 'eyelid') eyeN++;
+    }
+    if (bodyN >= 2 && eyeN === 0) n++;
+  }
+  return n;
+}
+
 export function auditIntegrity(src: MonsterGrid | Particle[]): IntegrityReport {
   return {
     lidOffEye: countLidOffEye(src),
@@ -304,6 +328,7 @@ export function auditIntegrity(src: MonsterGrid | Particle[]): IntegrityReport {
     eyeLattice: countEyeLattice(src),
     orphanLashEar: countOrphanLashEar(src),
     silhouetteLeak: countSilhouetteLeak(src),
+    foreheadStamp: countForeheadStamp(src),
   };
 }
 
@@ -316,6 +341,7 @@ export function sumDefects(r: IntegrityReport): number {
     r.mustacheOnMouth +
     r.eyeLattice +
     r.orphanLashEar +
-    r.silhouetteLeak
+    r.silhouetteLeak +
+    r.foreheadStamp
   );
 }

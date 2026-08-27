@@ -6,8 +6,8 @@ import { paintWithShadow } from './shading';
 import type { BrowStyle, EyeSlot } from './types';
 
 /**
- * Procedural living brows — strand fibers flush on each eye column's real rim
- * (not the rectangular bbox top, which floats above round masks).
+ * Procedural living brows — strand fibers on the actual eye rim
+ * (never on the coat above the eye — that reads as the left-eye stamp).
  */
 export function paintBrows(
   grid: MonsterGrid,
@@ -42,7 +42,7 @@ function strandColor(rng: Rng, palette: MonsterPalette): number {
 }
 
 /** Highest eye/pupil/eyelid row in this column within the eye slot (or -1). */
-function columnEyeTop(grid: MonsterGrid, eye: EyeSlot, dx: number): number {
+export function columnEyeTop(grid: MonsterGrid, eye: EyeSlot, dx: number): number {
   let top = -1;
   const col = eye.x + dx;
   for (let row = eye.y; row < eye.y + eye.h + 2; row++) {
@@ -53,6 +53,10 @@ function columnEyeTop(grid: MonsterGrid, eye: EyeSlot, dx: number): number {
   }
   return top;
 }
+
+const BROW_OVERWRITE: PaintOptsAllow = ['eye', 'eyelid'];
+
+type PaintOptsAllow = Array<'eye' | 'eyelid'>;
 
 function paintUnibrow(
   grid: MonsterGrid,
@@ -65,28 +69,18 @@ function paintUnibrow(
   const right = eyes.reduce((a, b) => (a.x > b.x ? a : b));
   const x0 = left.x;
   const x1 = right.x + right.w - 1;
-  const span = Math.max(1, x1 - x0);
-
-  // Anchor height from real eye tops
-  let rim = 0;
-  let rimN = 0;
-  for (const eye of eyes) {
-    for (let dx = 0; dx < eye.w; dx++) {
-      const t = columnEyeTop(grid, eye, dx);
-      if (t >= 0) {
-        rim += t;
-        rimN++;
-      }
-    }
-  }
-  if (rimN === 0) return;
-  const yBase = Math.round(rim / rimN) + 1;
 
   for (let c = x0; c <= x1; c++) {
-    const t = ((c - x0) / span) * 2 - 1;
-    const arc = Math.abs(t) < 0.35 ? 1 : 0;
-    const y = yBase + Math.min(1, arc);
-    paintWithShadow(grid, c, y, base, strandColor(rng, palette), 'brow', {
+    // Only columns that actually have an eye rim — skip the forehead gap
+    let top = -1;
+    for (const eye of eyes) {
+      const dx = c - eye.x;
+      if (dx < 0 || dx >= eye.w) continue;
+      const t = columnEyeTop(grid, eye, dx);
+      if (t > top) top = t;
+    }
+    if (top < 0) continue;
+    paintWithShadow(grid, c, top, base, strandColor(rng, palette), 'brow', {
       zBoost: 0.05,
       soft: true,
       size: rng.float(0.85, 1),
@@ -94,7 +88,21 @@ function paintUnibrow(
       tipFactor: 0.3,
       phase: base.phase + c * 0.15,
       shadow: false,
+      allowOverwrite: BROW_OVERWRITE,
     });
+    const below = grid.cells.get(cellKey(c, top - 1));
+    if (below && (below.part === 'eye' || below.part === 'eyelid')) {
+      paintWithShadow(grid, c, top - 1, base, strandColor(rng, palette), 'brow', {
+        zBoost: 0.052,
+        soft: true,
+        size: rng.float(0.8, 0.95),
+        hairStrand: c + 80,
+        tipFactor: 0.4,
+        phase: base.phase + c * 0.2 + 0.5,
+        shadow: false,
+        allowOverwrite: BROW_OVERWRITE,
+      });
+    }
   }
 }
 
@@ -106,27 +114,11 @@ function paintOneBrow(
   base: GridCell,
   style: BrowStyle,
 ): void {
-  const bend =
-    style === 'angry'
-      ? -1
-      : style === 'surprised'
-        ? 1
-        : style === 'straight'
-          ? 0
-          : style === 'bushy'
-            ? rng.float(-0.5, 0.5)
-            : rng.float(-0.6, 0.6);
-
   for (let dx = 0; dx < eye.w; dx++) {
     const top = columnEyeTop(grid, eye, dx);
     if (top < 0) continue;
 
-    const t = eye.w <= 1 ? 0 : (dx / (eye.w - 1)) * 2 - 1;
-    const curve = Math.max(0, Math.min(1, Math.round((1 - t * t) * Math.max(0, bend))));
-    // Flush on rim: row = top+1, optional +1 for arch (still Chebyshev ≤ 2 from rim)
-    const y = top + 1 + curve;
-
-    paintWithShadow(grid, eye.x + dx, y, base, strandColor(rng, palette), 'brow', {
+    paintWithShadow(grid, eye.x + dx, top, base, strandColor(rng, palette), 'brow', {
       zBoost: 0.05,
       soft: true,
       faceSide: eye.side === 0 ? undefined : eye.side,
@@ -135,12 +127,14 @@ function paintOneBrow(
       tipFactor: 0.25,
       phase: base.phase + dx * 0.2,
       shadow: false,
+      allowOverwrite: BROW_OVERWRITE,
     });
 
-    if (style === 'bushy' || (style !== 'thin' && rng.chance(0.45))) {
-      // Extra fiber beside/at rim+1 only — never beyond top+2
-      const y2 = top + 1;
-      if (y2 !== y) {
+    // Second row down into the eye (thickBrow gate) — never onto the coat
+    if (style === 'bushy' || style === 'angry' || (style !== 'thin' && rng.chance(0.55))) {
+      const y2 = top - 1;
+      const below = grid.cells.get(cellKey(eye.x + dx, y2));
+      if (below && (below.part === 'eye' || below.part === 'eyelid' || below.part === 'brow')) {
         paintWithShadow(grid, eye.x + dx, y2, base, strandColor(rng, palette), 'brow', {
           zBoost: 0.052,
           soft: true,
@@ -150,6 +144,7 @@ function paintOneBrow(
           tipFactor: 0.4,
           phase: base.phase + dx * 0.25 + 0.7,
           shadow: false,
+          allowOverwrite: BROW_OVERWRITE,
         });
       }
     }

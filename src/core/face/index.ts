@@ -19,6 +19,7 @@ export {
   countMustacheOnMouth,
   countOrphanLashEar,
   countSilhouetteLeak,
+  countForeheadStamp,
   sumDefects,
 } from './integrity';
 export type { IntegrityReport } from './integrity';

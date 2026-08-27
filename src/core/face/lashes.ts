@@ -1,6 +1,7 @@
 import type { Rng } from '../rng';
 import type { GridCell, MonsterGrid, MonsterPalette } from '../types';
 import { cellKey } from '../types';
+import { columnEyeTop } from './brows';
 import { paintWithShadow } from './shading';
 import type { EyeSlot, LashStyle } from './types';
 
@@ -29,9 +30,15 @@ function touchesEyeRim(grid: MonsterGrid, col: number, row: number): boolean {
     [0, -1],
   ] as const) {
     const nb = grid.cells.get(cellKey(col + dc, row + dr));
-    if (nb && (nb.part === 'eye' || nb.part === 'eyelid' || nb.part === 'pupil')) return true;
+    if (nb && (nb.part === 'eye' || nb.part === 'eyelid' || nb.part === 'pupil' || nb.part === 'brow')) {
+      return true;
+    }
   }
   return false;
+}
+
+function isBody(grid: MonsterGrid, col: number, row: number): boolean {
+  return grid.cells.get(cellKey(col, row))?.part === 'body';
 }
 
 function paintOneLash(
@@ -42,21 +49,23 @@ function paintOneLash(
   base: GridCell,
   style: LashStyle,
 ): void {
-  const topY = eye.y + eye.h;
-  const botY = eye.y - 1;
   const count =
     style === 'spider' ? Math.min(6, eye.w) : style === 'clump' ? 3 : Math.min(5, Math.max(2, eye.w));
 
   if (style !== 'lower_only') {
     for (let i = 0; i < count; i++) {
       const t = count <= 1 ? 0.5 : i / (count - 1);
-      const x = eye.x + Math.round(t * (eye.w - 1));
+      const dx = Math.round(t * (eye.w - 1));
+      const top = columnEyeTop(grid, eye, dx);
+      if (top < 0) continue;
+      const x = eye.x + dx;
       const len = style === 'spike' ? rng.int(1, 3) : style === 'fan' ? 2 : rng.int(1, 2);
       const flare =
         style === 'fan' ? Math.round((t - 0.5) * 2) : style === 'spider' ? (i % 2 === 0 ? -1 : 1) : 0;
       for (let L = 1; L <= len; L++) {
         const col = x + flare * L;
-        const row = topY + L;
+        const row = top + L;
+        if (isBody(grid, col, row)) continue;
         if (!touchesEyeRim(grid, col, row) && L > 1 && !touchesEyeRim(grid, col, row - 1)) continue;
         paintWithShadow(grid, col, row, base, palette.brow, 'lash', {
           zBoost: 0.056,
@@ -73,7 +82,12 @@ function paintOneLash(
     const n = style === 'lower_only' ? count : 2;
     for (let i = 0; i < n; i++) {
       const t = n <= 1 ? 0.5 : i / (n - 1);
-      const x = eye.x + Math.round(t * (eye.w - 1));
+      const dx = Math.round(t * (eye.w - 1));
+      const top = columnEyeTop(grid, eye, dx);
+      if (top < 0) continue;
+      const x = eye.x + dx;
+      const botY = eye.y - 1;
+      if (isBody(grid, x, botY)) continue;
       if (!touchesEyeRim(grid, x, botY) && !touchesEyeRim(grid, x, botY + 1)) continue;
       paintWithShadow(grid, x, botY, base, palette.brow, 'lash', {
         zBoost: 0.056,
