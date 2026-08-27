@@ -1,19 +1,12 @@
-import { Group, Mesh } from 'three';
-import type { Blob } from '../types';
-import { buildBulalashkaSkull, type BulalashkaSkull } from '../mesh/bulalashkaSkull';
-import { createBulalashkaMaterials, type BulalashkaMaterials } from '../mesh/materials';
-import { layoutEyes, solveEyeLayout } from './layout';
-import { carveSocketPatch, recessSkullPatch } from './socket';
-import { buildBallEye, buildClusterEye, buildHoleEye } from './styles/shared';
+import { buildBulalashkaSkull } from '../mesh/bulalashkaSkull';
 import type { Rng } from '../rng';
 import type {
   BulalashkaEyeParams,
   BulalashkaSkullParams,
-  MonsterPalette,
   VolumetricEyeBundle,
   VolumetricEyeMetrics,
 } from '../types';
-import { anchorOnSurface } from '../mesh/bulalashkaSkull';
+import { layoutEyes, solveEyeLayout } from './layout';
 
 export function generateSkullParams(rng: Rng): BulalashkaSkullParams {
   return {
@@ -58,113 +51,10 @@ export function generateEyeParams(rng: Rng, bodyArchetype: string): BulalashkaEy
   };
 }
 
-export interface VolumetricEyeScene {
-  root: Group;
-  skull: BulalashkaSkull;
-  materials: BulalashkaMaterials;
-  eyelids: Mesh[];
-}
-
-/** Build Three.js eye assembly + skull for detail renderer. */
-export function buildVolumetricEyeScene(
-  blobs: Blob[],
-  palette: MonsterPalette,
-  bundle: VolumetricEyeBundle,
-  mouthFloorY: number,
-): VolumetricEyeScene {
-  const skull = buildBulalashkaSkull(blobs, bundle.skullParams);
-  const materials = createBulalashkaMaterials(palette);
-  const root = new Group();
-  root.name = 'bulalashka-volumetric';
-
-  const skullMesh = new Mesh(skull.geometry, materials.skin);
-  skullMesh.name = 'skull-skin';
-  root.add(skullMesh);
-
-  const { plans, silhouetteClip } = solveEyeLayout(
-    bundle.params,
-    bundle.plans.map((p) => ({ ...p })),
-    skull,
-    mouthFloorY,
-  );
-
-  const eyelids: Mesh[] = [];
-  let socketDepthSum = 0;
-  let socketCount = 0;
-  let bulgeSum = 0;
-
-  if (bundle.params.eyeStyle === 'cluster') {
-    const cx = plans.reduce((s, p) => s + p.x, 0) / plans.length;
-    const cy = plans.reduce((s, p) => s + p.y, 0) / plans.length;
-    const maxR = Math.max(...plans.map((p) => p.rx)) * 1.45;
-    recessSkullPatch(skull, cx, cy, maxR, maxR * 0.85, bundle.params.eyeSize * 0.35);
-    const sock = carveSocketPatch(
-      skull,
-      cx,
-      cy,
-      maxR,
-      maxR * 0.85,
-      bundle.params.eyeSize * 0.28,
-      3,
-      materials,
-    );
-    root.add(sock.mesh);
-    socketDepthSum += sock.depth;
-    socketCount++;
-
-    const anchor = anchorOnSurface(skull, cx, cy)!;
-    const cluster = buildClusterEye(plans, anchor, bundle.params, materials, skull);
-    root.add(cluster);
-    for (const c of cluster.children) {
-      if ((c as Mesh).name === 'eyelid') eyelids.push(c as Mesh);
-    }
-    bulgeSum = plans.reduce((s, p) => s + p.bulge, 0);
-  } else {
-    for (const plan of plans) {
-      recessSkullPatch(skull, plan.x, plan.y, plan.rx * 1.45, plan.ry * 1.35, plan.size * 0.32);
-      const sock = carveSocketPatch(
-        skull,
-        plan.x,
-        plan.y,
-        plan.rx * 1.45,
-        plan.ry * 1.35,
-        plan.size * 0.3,
-        3,
-        materials,
-      );
-      root.add(sock.mesh);
-      socketDepthSum += sock.depth;
-      socketCount++;
-
-      const anchor = anchorOnSurface(skull, plan.x, plan.y)!;
-      let eye: Group;
-      if (bundle.params.eyeStyle === 'hole') {
-        eye = buildHoleEye(plan, anchor, bundle.params, materials, skull);
-      } else {
-        eye = buildBallEye(plan, anchor, bundle.params, materials, skull);
-      }
-      root.add(eye);
-      eye.traverse((o) => {
-        if (o instanceof Mesh && o.name === 'eyelid') eyelids.push(o);
-      });
-      bulgeSum += plan.bulge;
-    }
-  }
-
-  bundle.metrics = {
-    eyeCount: plans.length,
-    avgBulge: plans.length ? bulgeSum / plans.length : 0,
-    socketDepth: socketCount ? socketDepthSum / socketCount : 0,
-    silhouetteClip,
-  };
-
-  return { root, skull, materials, eyelids };
-}
-
 /** Pure-data bundle for MonsterData (no Three.js objects). */
 export function buildVolumetricEyeBundle(
   rng: Rng,
-  blobs: Blob[],
+  blobs: import('../types').Blob[],
   bodyArchetype: string,
   variantSeed: string,
   mouthFloorY: number,
@@ -173,7 +63,6 @@ export function buildVolumetricEyeBundle(
   const skullParams = generateSkullParams(rng);
   const plans = layoutEyes(params, rng);
 
-  // Dry-run solver using temporary skull for metrics/plan adjustment
   const tempSkull = buildBulalashkaSkull(blobs, skullParams);
   const { plans: solved, silhouetteClip } = solveEyeLayout(params, plans, tempSkull, mouthFloorY);
   tempSkull.geometry.dispose();
@@ -195,5 +84,4 @@ export function buildVolumetricEyeBundle(
   };
 }
 
-// Re-export layout for tests
 export { layoutEyes, solveEyeLayout } from './layout';

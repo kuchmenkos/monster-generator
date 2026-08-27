@@ -56,7 +56,6 @@ export class DetailView extends Container {
     if (!this.sceneView) return;
     this.sceneView.x = width * 0.5;
     this.sceneView.y = height * 0.52;
-    const scale = Math.min(width, height) * 0.28;
-    this.sceneView.setDisplayScale(scale);
+    this.sceneView.fitInto(Math.min(width, height) * 0.72, height * 0.68);
   }
 }

@@ -10,6 +10,10 @@ import {
 } from 'three';
 import { buildBulalashkaScene } from '../core/mesh/buildScene';
 import type { Blob, MonsterData } from '../core/types';
+import { centerScene, frameCamera } from './frameScene';
+
+const GALLERY_YAW = 0.28;
+const GALLERY_PITCH = 0.08;
 
 /** Unified HEADDDS-style mesh scene: body + eyes + mouth + butt. */
 export class BulalashkaSceneView extends Sprite {
@@ -34,11 +38,14 @@ export class BulalashkaSceneView extends Sprite {
   private lookY = 0;
   private readonly allowRotate: boolean;
   private readonly rtSize: number;
+  private readonly baseYaw: number;
+  private readonly basePitch: number;
 
   constructor(options: {
     data: MonsterData;
     blobs: Blob[];
     allowRotate?: boolean;
+    thumbnail?: boolean;
     size?: number;
     subdivisions?: number;
   }) {
@@ -46,6 +53,9 @@ export class BulalashkaSceneView extends Sprite {
     this.data = options.data;
     this.allowRotate = options.allowRotate ?? true;
     this.rtSize = options.size ?? 512;
+    const thumbnail = options.thumbnail ?? !this.allowRotate;
+    this.baseYaw = thumbnail ? GALLERY_YAW : 0;
+    this.basePitch = thumbnail ? GALLERY_PITCH : 0;
 
     const bundle = options.data.meshBundle ?? options.data.volumetricEyes;
     if (!bundle || !('mouth' in bundle)) {
@@ -68,7 +78,6 @@ export class BulalashkaSceneView extends Sprite {
 
     this.threeScene = new Scene();
     this.threeCamera = new PerspectiveCamera(28, 1, 0.05, 20);
-    this.threeCamera.position.set(0, 0.04, 2.35);
 
     const amb = new AmbientLight(0xffffff, 0.5);
     const key = new DirectionalLight(0xffffff, 1.0);
@@ -89,6 +98,12 @@ export class BulalashkaSceneView extends Sprite {
     this.pupils = built.pupils;
     this.sparkles = built.sparkles;
     this.threeScene.add(this.sceneRoot);
+
+    if (thumbnail) {
+      this.sceneRoot.rotation.set(this.basePitch, this.baseYaw, 0);
+    }
+    centerScene(this.sceneRoot);
+    frameCamera(this.threeCamera, this.sceneRoot, 1, thumbnail ? 1.2 : 1.08);
 
     this.renderThree();
     this.pixiTexture = Texture.from(this.canvas);
@@ -167,8 +182,8 @@ export class BulalashkaSceneView extends Sprite {
     const wobY = Math.sin(this.elapsed * anim.swayFreq) * anim.swayAmp * 0.4;
     const wobP = Math.cos(this.elapsed * anim.breathFreq * 0.7) * anim.breathAmp * 2;
     this.sceneRoot.rotation.set(
-      this.dragPitch + wobP,
-      this.dragYaw + wobY,
+      this.basePitch + this.dragPitch + wobP,
+      this.baseYaw + this.dragYaw + wobY,
       Math.sin(this.elapsed * 0.9) * 0.02,
     );
 
@@ -217,6 +232,3 @@ export class BulalashkaSceneView extends Sprite {
     super.destroy(options);
   }
 }
-
-/** @deprecated Use BulalashkaSceneView */
-export { BulalashkaSceneView as BulalashkaMeshView };

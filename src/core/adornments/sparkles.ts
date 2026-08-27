@@ -1,5 +1,6 @@
 import { Group, Mesh, SphereGeometry } from 'three';
 import type { BulalashkaSkull } from '../mesh/bulalashkaSkull';
+import { anchorOnCrown } from '../mesh/bulalashkaSkull';
 import type { BulalashkaMaterials } from '../mesh/materials';
 import { lighten } from '../palette';
 import type { Rng } from '../rng';
@@ -29,13 +30,15 @@ export function buildSparkles(
 
   const mat = materials.skin.clone();
   mat.color.setHex(lighten(palette.accent2, 0.2));
-  const cy = skull.bounds.maxY + plan.y * 0.5;
+  const crownAnchor = anchorOnCrown(skull, 0);
+  group.position.copy(crownAnchor.point);
+  group.position.y += plan.y * 0.35;
 
   for (let i = 0; i < plan.count; i++) {
     const a = (i / plan.count) * Math.PI * 2;
     const r = plan.radius * (0.4 + (i % 3) * 0.2);
     const sparkle = new Mesh(new SphereGeometry(0.006 + (i % 2) * 0.003, 4, 3), mat);
-    sparkle.position.set(Math.cos(a) * r, cy + Math.sin(i * 1.3) * 0.02, Math.sin(a) * r * 0.5);
+    sparkle.position.set(Math.cos(a) * r, Math.sin(i * 1.3) * 0.02, Math.sin(a) * r * 0.35);
     sparkle.name = 'sparkle';
     sparkle.userData.phase = i * 0.7;
     sparkle.userData.baseY = sparkle.position.y;
@@ -44,8 +47,4 @@ export function buildSparkles(
   }
 
   return { group, meshes };
-}
-
-export function generateSparklePlanFromRng(rng: Rng, crownSparkle: boolean): SparklePlan {
-  return generateSparklePlan(rng, crownSparkle);
 }

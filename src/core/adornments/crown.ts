@@ -43,7 +43,8 @@ export function buildCrown(
     const h = plan.height * (0.65 + (i % 3) * 0.2);
 
     if (plan.style === 'spikes') {
-      const spike = new Mesh(new ConeGeometry(plan.height * 0.22, h, 5), skinMat);
+      const spikeR = h * 0.22;
+      const spike = new Mesh(new ConeGeometry(spikeR, h, 5), skinMat);
       spike.position.copy(anchor.point);
       spike.position.y += h * 0.4;
       spike.rotation.z = t * 0.25;

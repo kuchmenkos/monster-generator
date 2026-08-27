@@ -1,4 +1,5 @@
 import { BoxGeometry, CylinderGeometry, Group, Mesh, SphereGeometry, Vector3 } from 'three';
+import { orientPivot } from '../eyes/styles/shared';
 import { recessSkullPatch } from '../eyes/socket';
 import type { BulalashkaSkull } from '../mesh/bulalashkaSkull';
 import { anchorOnSurface, faceCenter } from '../mesh/bulalashkaSkull';
@@ -32,13 +33,17 @@ export function buildNose(
   eyeY: number,
   mouthY: number,
 ): Group {
-  const group = new Group();
-  group.name = 'nose';
+  const root = new Group();
+  root.name = 'nose';
   const center = faceCenter(skull, eyeY, mouthY);
   const anchor = anchorOnSurface(skull, plan.x, plan.y) ?? {
     point: center,
     normal: new Vector3(0, 0, 1),
   };
+
+  const pivot = new Group();
+  orientPivot(pivot, anchor);
+  root.add(pivot);
 
   const socketMat = materials.socket;
   const skinMat = materials.skin.clone();
@@ -52,8 +57,8 @@ export function buildNose(
           new BoxGeometry(plan.size * 0.35, plan.size * 1.4, plan.size * 0.5),
           socketMat,
         );
-        nostril.position.set(plan.x + sx, plan.y, anchor.point.z + plan.size * 0.15);
-        group.add(nostril);
+        nostril.position.set(sx, 0, plan.size * 0.15);
+        pivot.add(nostril);
       }
       break;
     }
@@ -62,25 +67,24 @@ export function buildNose(
         new CylinderGeometry(plan.size * 0.25, plan.size * 0.35, plan.size * 2.2, 6),
         skinMat,
       );
-      stem.position.copy(anchor.point);
-      stem.position.z += plan.size * 0.8;
+      stem.position.z = plan.size * 0.8;
       stem.rotation.z = plan.tilt;
       stem.rotation.x = -0.4;
-      group.add(stem);
+      pivot.add(stem);
       const tip = new Mesh(new SphereGeometry(plan.size * 0.4, 6, 4), socketMat);
-      tip.position.copy(stem.position);
-      tip.position.x += Math.sin(plan.tilt) * plan.size;
-      tip.position.y += Math.cos(plan.tilt) * plan.size * 0.5;
-      tip.position.z += plan.size * 1.2;
-      group.add(tip);
+      tip.position.set(
+        Math.sin(plan.tilt) * plan.size,
+        Math.cos(plan.tilt) * plan.size * 0.5,
+        plan.size * 2,
+      );
+      pivot.add(tip);
       break;
     }
     case 'patch_bump': {
       recessSkullPatch(skull, plan.x, plan.y, plan.size * 1.2, plan.size, plan.size * 0.15);
       const bump = new Mesh(new SphereGeometry(plan.size * 0.9, 8, 6), skinMat);
-      bump.position.copy(anchor.point);
-      bump.position.z += plan.size * 0.35;
-      group.add(bump);
+      bump.position.z = plan.size * 0.35;
+      pivot.add(bump);
       break;
     }
     case 'ridge': {
@@ -89,5 +93,5 @@ export function buildNose(
     }
   }
 
-  return group;
+  return root;
 }

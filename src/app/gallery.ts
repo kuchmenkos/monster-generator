@@ -70,13 +70,14 @@ export class Gallery extends Container {
       if (!data.meshBundle || !data.blobs) {
         throw new Error(`Missing meshBundle for ${seed}`);
       }
-      const view = new BulalashkaSceneView({
-        data,
-        blobs: data.blobs,
-        allowRotate: false,
-        size: 256,
-        subdivisions: 2,
-      });
+    const view = new BulalashkaSceneView({
+      data,
+      blobs: data.blobs,
+      allowRotate: false,
+      thumbnail: true,
+      size: 256,
+      subdivisions: 2,
+    });
       this.placeView(view, index);
       view.on('pointertap', () => {
         this.onSelect?.(seed, data);

@@ -69,6 +69,6 @@ export function buildHeadAdornments(
 }
 
 export { generateNosePlan, buildNose } from './nose';
-export { layoutEars, buildEars, generateEarPlans } from './ears';
+export { layoutEars, buildEars } from './ears';
 export { generateCrownPlan, buildCrown } from './crown';
 export { generateSparklePlan, buildSparkles } from './sparkles';

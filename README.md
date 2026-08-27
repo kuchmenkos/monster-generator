@@ -27,6 +27,6 @@ TypeScript · Vite · PixiJS 8 (`ParticleContainer` для батченого р
 
 ```
 src/core/     # чиста генерація (rng, palette, field, particles, features, monster)
-src/render/   # MonsterView — анімована хмара частинок
+src/render/   # BulalashkaSceneView — unified mesh renderer (Pixi + Three.js)
 src/app/      # gallery, detail, ui
 ```
