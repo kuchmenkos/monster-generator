@@ -184,6 +184,17 @@ export function scoreBulalashka(data: MonsterData): number {
   else score += 6;
   if (mouths.some((p) => p.mouthRole === 'cavity') || data.meshBundle?.metrics.mouthCavity) score += 4;
 
+  if (meshMetrics?.hasNose) score += 3;
+  if (meshMetrics && meshMetrics.earCount >= 2) score += 4;
+  if (meshMetrics && meshMetrics.crownCount >= 3) score += 4;
+  if (meshMetrics && meshMetrics.sparkleCount > 0) score += 2;
+  if (meshMetrics && meshMetrics.earSilhouetteClip > 0.25) score -= 6;
+  const adornmentCats =
+    (meshMetrics?.hasNose ? 1 : 0) +
+    ((meshMetrics?.earCount ?? 0) > 0 ? 1 : 0) +
+    ((meshMetrics?.crownCount ?? 0) > 0 ? 1 : 0);
+  if (adornmentCats >= 2) score += 3;
+
   if (data.archetype === 'pear' || data.archetype === 'dumpling' || data.archetype === 'teardrop') {
     score += 5;
   }

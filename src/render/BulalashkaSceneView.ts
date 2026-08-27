@@ -20,6 +20,7 @@ export class BulalashkaSceneView extends Sprite {
   private readonly sceneRoot: Group;
   private readonly eyelids: Mesh[];
   private readonly pupils: Mesh[];
+  private readonly sparkles: Mesh[];
   private readonly canvas: HTMLCanvasElement;
   private readonly pixiTexture: Texture;
 
@@ -86,6 +87,7 @@ export class BulalashkaSceneView extends Sprite {
     this.sceneRoot = built.root;
     this.eyelids = built.eyelids;
     this.pupils = built.pupils;
+    this.sparkles = built.sparkles;
     this.threeScene.add(this.sceneRoot);
 
     this.renderThree();
@@ -204,6 +206,14 @@ export class BulalashkaSceneView extends Sprite {
         const w = (lid.userData.blinkWeight as number) ?? 0.5;
         lid.rotation.x = -Math.PI * 0.12 * w;
       }
+    }
+
+    for (const sparkle of this.sparkles) {
+      const phase = (sparkle.userData.phase as number) ?? 0;
+      const baseY = (sparkle.userData.baseY as number) ?? sparkle.position.y;
+      const pulse = 0.65 + Math.sin(this.elapsed * 3.2 + phase) * 0.35;
+      sparkle.scale.setScalar(pulse);
+      sparkle.position.y = baseY + Math.sin(this.elapsed * 1.8 + phase * 1.3) * 0.012;
     }
 
     this.renderThree();

@@ -1,4 +1,5 @@
 import type { MeshPatternKind } from './meshPatterns';
+import { generateHeadAdornments } from '../adornments';
 import { generateSkullParams, generateEyeParams, layoutEyes, solveEyeLayout } from '../eyes/index';
 import { buildBulalashkaSkull } from './bulalashkaSkull';
 import { generateMouthBundle } from '../mouth';
@@ -38,6 +39,7 @@ export function buildMeshBundle(
 
   const mouth = generateMouthBundle(rng, mouthFloorY, eyeParams.eyeY);
   const patternKind = pickPatternKind(rng);
+  const adornments = generateHeadAdornments(rng, blobs, skullParams, eyeParams.eyeY, mouth.midY);
 
   const metrics: MeshBundleMetrics = {
     eyeCount: solved.length,
@@ -48,6 +50,11 @@ export function buildMeshBundle(
     buttProtrusion: 0.12,
     vertexColorSteps: 0,
     patternKind,
+    hasNose: adornments.nose.style !== 'ridge' || adornments.nose.size > 0,
+    earCount: adornments.ears.length,
+    crownCount: adornments.crown.count,
+    earSilhouetteClip: adornments.earSilhouetteClip,
+    sparkleCount: adornments.sparkles.count,
   };
 
   const volumetricEyes = {
@@ -67,6 +74,7 @@ export function buildMeshBundle(
   return {
     volumetricEyes,
     mouth,
+    adornments,
     patternKind,
     metrics,
     variantSeed,

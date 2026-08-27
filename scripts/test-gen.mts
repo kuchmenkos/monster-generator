@@ -44,6 +44,12 @@ let volEyeMonsters = 0;
 let meshMouthSum = 0;
 let meshButtProtrusionSum = 0;
 let meshColorStepsSum = 0;
+let hasNoseSum = 0;
+let earCountSum = 0;
+let crownCountSum = 0;
+let earClipSum = 0;
+let sparkleCountSum = 0;
+let withAdornmentCategory = 0;
 let fillSum = 0;
 let frontFillSum = 0;
 let genMsSum = 0;
@@ -106,6 +112,16 @@ for (const seed of seeds) {
     meshMouthSum += m.meshBundle.metrics.mouthCavity ? 1 : 0;
     meshButtProtrusionSum += m.meshBundle.metrics.buttProtrusion;
     meshColorStepsSum += m.meshBundle.metrics.vertexColorSteps;
+    hasNoseSum += m.meshBundle.metrics.hasNose ? 1 : 0;
+    earCountSum += m.meshBundle.metrics.earCount;
+    crownCountSum += m.meshBundle.metrics.crownCount;
+    earClipSum += m.meshBundle.metrics.earSilhouetteClip;
+    sparkleCountSum += m.meshBundle.metrics.sparkleCount;
+    const cats =
+      (m.meshBundle.metrics.hasNose ? 1 : 0) +
+      (m.meshBundle.metrics.earCount > 0 ? 1 : 0) +
+      (m.meshBundle.metrics.crownCount > 0 ? 1 : 0);
+    if (cats >= 1) withAdornmentCategory++;
     if (m.meshBundle.metrics.eyeCount < 1) throw new Error(`no mesh eyes on ${seed}`);
   } else {
     throw new Error(`missing meshBundle on ${seed}`);
@@ -177,6 +193,21 @@ console.log(
   'avgButtProtrusion=',
   (meshButtProtrusionSum / Math.max(1, volEyeMonsters)).toFixed(3),
 );
+console.log(
+  'adornments',
+  'hasNose=',
+  (hasNoseSum / Math.max(1, volEyeMonsters)).toFixed(2),
+  'avgEars=',
+  (earCountSum / Math.max(1, volEyeMonsters)).toFixed(2),
+  'avgCrown=',
+  (crownCountSum / Math.max(1, volEyeMonsters)).toFixed(2),
+  'avgEarClip=',
+  (earClipSum / Math.max(1, volEyeMonsters)).toFixed(3),
+  'avgSparkles=',
+  (sparkleCountSum / Math.max(1, volEyeMonsters)).toFixed(2),
+  'withCategory=',
+  (withAdornmentCategory / Math.max(1, volEyeMonsters)).toFixed(2),
+);
 
 if (!same) throw new Error('determinism failed');
 if (noAppendages < seeds.length) throw new Error('appendages present');
@@ -193,6 +224,10 @@ if (avgMs > 350) throw new Error(`gen too slow: ${avgMs}ms`);
 if (richCoat < seeds.length * 0.65) throw new Error('too few coat tones');
 if (volEyeMonsters < seeds.length) throw new Error('missing mesh bundle');
 if (meshMouthSum < seeds.length * 0.7) throw new Error('too few mesh mouth cavities');
+if (withAdornmentCategory < seeds.length * 0.7) throw new Error('too few adornment categories');
+if (hasNoseSum < seeds.length * 0.9) throw new Error('too few noses');
+if (earCountSum < seeds.length * 1.8) throw new Error('too few ears');
+if (crownCountSum < seeds.length * 2.5) throw new Error('too few crown elements');
 
 const n1 = generateMonsterName('n');
 if (n1 !== generateMonsterName('n')) throw new Error('name');

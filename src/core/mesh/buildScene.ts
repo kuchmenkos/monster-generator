@@ -1,4 +1,5 @@
 import { Group, Mesh } from 'three';
+import { buildHeadAdornments } from '../adornments';
 import {
   buildBeadEye,
   buildBulbEye,
@@ -21,6 +22,7 @@ export interface BulalashkaSceneResult {
   materials: BulalashkaMaterials;
   eyelids: Mesh[];
   pupils: Mesh[];
+  sparkles: Mesh[];
 }
 
 export interface BuildSceneOptions {
@@ -57,6 +59,16 @@ export function buildBulalashkaScene(
     ve.skullParams.jawDrop,
   );
   root.add(mouthGroup);
+
+  const { group: adornmentGroup, sparkles } = buildHeadAdornments(
+    skull,
+    bundle.adornments,
+    palette,
+    materials,
+    ve.params.eyeY,
+    bundle.mouth.midY,
+  );
+  root.add(adornmentGroup);
 
   const { group: buttGroup, protrusion } = buildMeshButt(skull, buttArchetype, palette, materials);
   root.add(buttGroup);
@@ -148,6 +160,11 @@ export function buildBulalashkaScene(
     buttProtrusion: protrusion,
     vertexColorSteps: countVertexColorSteps(skull),
     patternKind,
+    hasNose: bundle.adornments.nose.size > 0,
+    earCount: bundle.adornments.ears.length,
+    crownCount: bundle.adornments.crown.count,
+    earSilhouetteClip: bundle.adornments.earSilhouetteClip,
+    sparkleCount: bundle.adornments.sparkles.count,
   };
 
   ve.metrics = {
@@ -157,7 +174,7 @@ export function buildBulalashkaScene(
     silhouetteClip,
   };
 
-  return { root, materials, eyelids, pupils };
+  return { root, materials, eyelids, pupils, sparkles };
 }
 
 export { layoutEyes, solveEyeLayout } from '../eyes/layout';

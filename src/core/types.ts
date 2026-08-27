@@ -246,12 +246,62 @@ export interface MeshBundleMetrics {
   buttProtrusion: number;
   vertexColorSteps: number;
   patternKind: string;
+  hasNose: boolean;
+  earCount: number;
+  crownCount: number;
+  earSilhouetteClip: number;
+  sparkleCount: number;
+}
+
+export type NoseStyle = 'nostril_slit' | 'stalk' | 'patch_bump' | 'ridge';
+export type EarStyle = 'lobe' | 'fin' | 'stub' | 'bar';
+export type CrownStyle = 'spikes' | 'sprouts' | 'cloud_puff' | 'straw' | 'crystal';
+
+export interface NosePlan {
+  style: NoseStyle;
+  x: number;
+  y: number;
+  size: number;
+  tilt: number;
+}
+
+export interface EarPlan {
+  style: EarStyle;
+  side: -1 | 1;
+  x: number;
+  y: number;
+  length: number;
+  width: number;
+  tipAccent: boolean;
+}
+
+export interface CrownPlan {
+  style: CrownStyle;
+  count: number;
+  spread: number;
+  height: number;
+  sparkle: boolean;
+}
+
+export interface SparklePlan {
+  count: number;
+  radius: number;
+  y: number;
+}
+
+export interface HeadAdornmentBundle {
+  nose: NosePlan;
+  ears: EarPlan[];
+  crown: CrownPlan;
+  sparkles: SparklePlan;
+  earSilhouetteClip: number;
 }
 
 /** Serializable mesh bundle for Three.js renderer. */
 export interface MeshBundle {
   volumetricEyes: VolumetricEyeBundle;
   mouth: MouthBundle;
+  adornments: HeadAdornmentBundle;
   patternKind: string;
   metrics: MeshBundleMetrics;
   variantSeed: string;

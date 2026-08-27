@@ -166,6 +166,57 @@ export function silhouetteWidthAtY(skull: BulalashkaSkull, y: number, tolerance 
   return maxAbsX;
 }
 
+/** Mid face point for nose placement between eyes and mouth. */
+export function faceCenter(skull: BulalashkaSkull, eyeY: number, mouthY: number): Vector3 {
+  const y = eyeY * 0.35 + mouthY * 0.65;
+  const anchor = anchorOnSurface(skull, 0, y);
+  return anchor?.point ?? new Vector3(0, y, skull.bounds.maxZ * 0.88);
+}
+
+/** Raycast from lateral side — for ears. side: -1 left, +1 right. yNorm 0..1 maps minY..maxY */
+export function anchorOnSide(
+  skull: BulalashkaSkull,
+  side: -1 | 1,
+  yNorm: number,
+): SurfaceAnchor {
+  const b = skull.bounds;
+  const y = b.minY + (b.maxY - b.minY) * Math.max(0.15, Math.min(0.85, yNorm));
+  const x = side > 0 ? b.maxX + 1.5 : b.minX - 1.5;
+  ORIGIN.set(x, y, 0);
+  RAY.set(ORIGIN, new Vector3(-side, 0, 0));
+  const hits = RAY.intersectObject(skull.mesh, false);
+  if (hits.length === 0) {
+    const px = side * silhouetteWidthAtY(skull, y) * 0.92;
+    return { point: new Vector3(px, y, 0), normal: new Vector3(side, 0, 0.1).normalize() };
+  }
+  const hit = hits[0]!;
+  const normal = hit.face?.normal.clone() ?? new Vector3(side, 0, 0);
+  normal.transformDirection(skull.mesh.matrixWorld);
+  normal.normalize();
+  return { point: hit.point.clone(), normal };
+}
+
+/** Raycast from above — for crown horns/hairs. xNorm -1..1 across skull width */
+export function anchorOnCrown(skull: BulalashkaSkull, xNorm: number): SurfaceAnchor {
+  const b = skull.bounds;
+  const x = ((b.minX + b.maxX) * 0.5) + xNorm * (b.maxX - b.minX) * 0.35;
+  ORIGIN.set(x, b.maxY + 1.5, 0);
+  RAY.set(ORIGIN, new Vector3(0, -1, 0));
+  const hits = RAY.intersectObject(skull.mesh, false);
+  if (hits.length === 0) {
+    return {
+      point: new Vector3(x, b.maxY * 0.95, b.maxZ * 0.3),
+      normal: new Vector3(0, 1, 0.15).normalize(),
+    };
+  }
+  const hit = hits[0]!;
+  const normal = hit.face?.normal.clone() ?? new Vector3(0, 1, 0);
+  normal.transformDirection(skull.mesh.matrixWorld);
+  normal.normalize();
+  if (normal.y < 0.2) normal.set(0, 1, 0.1).normalize();
+  return { point: hit.point.clone(), normal };
+}
+
 /** Inverted hull outline mesh for body rim. */
 export function buildBodyOutline(skull: BulalashkaSkull, materials: { outline: import('three').Material }): Mesh {
   const hull = new Mesh(skull.geometry.clone(), materials.outline);
