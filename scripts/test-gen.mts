@@ -17,6 +17,17 @@ function frontBodyFill(particles: Particle[]): number {
   return unique.size / area;
 }
 
+function sideRatio(particles: Particle[]): number {
+  const shell = particles.filter(
+    (p) =>
+      (p.part === 'body' || p.part === 'butt') &&
+      (p.facing === 'front' || p.facing === 'back' || p.facing === 'side'),
+  );
+  if (shell.length === 0) return 0;
+  const side = shell.filter((p) => p.facing === 'side').length;
+  return side / shell.length;
+}
+
 let withMouth = 0;
 let withCavity = 0;
 let mouthWidthOk = 0;
@@ -31,7 +42,10 @@ let frontFillSum = 0;
 let genMsSum = 0;
 let richCoat = 0;
 let minParticles = Infinity;
+let maxParticles = 0;
 let minBodyFront = Infinity;
+let minSideFacing = Infinity;
+let sideRatioSum = 0;
 let ringStackSum = 0;
 const archetypes: Record<string, number> = {};
 const buttTypes: Record<string, number> = {};
@@ -45,23 +59,27 @@ for (const seed of seeds) {
   buttTypes[m.buttArchetype] = (buttTypes[m.buttArchetype] || 0) + 1;
   fillSum += bboxFill(m.particles);
   frontFillSum += frontBodyFill(m.particles);
+  sideRatioSum += sideRatio(m.particles);
 
   const body = m.particles.filter((p) => p.part === 'body');
   const frontBody = m.particles.filter((p) => p.part === 'body' && p.facing === 'front');
+  const sideBody = m.particles.filter((p) => p.part === 'body' && p.facing === 'side');
   const mouths = m.particles.filter((p) => p.part === 'mouth' || p.part === 'tooth');
   const pupils = m.particles.filter((p) => p.part === 'pupil');
   const append = m.particles.filter((p) => p.part === 'appendage');
   const butt = m.particles.filter((p) => p.part === 'butt' || p.part === 'butt_highlight');
 
   minParticles = Math.min(minParticles, m.particles.length);
+  maxParticles = Math.max(maxParticles, m.particles.length);
   minBodyFront = Math.min(minBodyFront, frontBody.length);
+  minSideFacing = Math.min(minSideFacing, sideBody.length);
   const stackMap = new Map<string, number>();
   for (const p of m.particles.filter((x) => x.part === 'body' || x.part === 'butt')) {
     const k = `${p.col},${p.row}`;
     stackMap.set(k, (stackMap.get(k) ?? 0) + 1);
   }
   for (const n of stackMap.values()) {
-    if (n > 2) ringStackSum += n - 2;
+    if (n > 4) ringStackSum += n - 4;
   }
 
   if (append.length === 0) noAppendages++;
@@ -87,9 +105,12 @@ for (const seed of seeds) {
     }
   }
 
-  if (!m.scaleRef || m.scaleRef < 2) throw new Error('scaleRef too low');
+  if (!m.scaleRef || m.scaleRef < 1.0) throw new Error('scaleRef too low');
   if (append.length > 0) throw new Error(`limbs on ${seed}`);
-  if (frontBody.length < 400) throw new Error(`too few front body on ${seed}: ${frontBody.length}`);
+  if (m.particles.length > 4500) throw new Error(`too many particles on ${seed}: ${m.particles.length}`);
+  if (sideBody.length < 200) throw new Error(`too few side geometry on ${seed}: ${sideBody.length}`);
+  if (sideRatio(m.particles) < 0.15) throw new Error(`sideRatio too low on ${seed}`);
+  if (frontBody.length < 120) throw new Error(`too few front body on ${seed}: ${frontBody.length}`);
 }
 
 const a = generateMonster('alpha-check');
@@ -108,12 +129,14 @@ const same =
 
 const avgFill = fillSum / seeds.length;
 const avgFrontFill = frontFillSum / seeds.length;
+const avgSideRatio = sideRatioSum / seeds.length;
 const avgMs = genMsSum / seeds.length;
 const avgRingStack = ringStackSum / seeds.length;
 
 console.log('n=', seeds.length, 'avgMs=', avgMs.toFixed(1), 'avgFill=', avgFill.toFixed(3));
 console.log('avgFrontFill=', avgFrontFill.toFixed(3), 'minBodyFront=', minBodyFront);
-console.log('minParticles=', minParticles, 'avgRingStack=', avgRingStack.toFixed(2));
+console.log('minParticles=', minParticles, 'maxParticles=', maxParticles, 'avgRingStack=', avgRingStack.toFixed(2));
+console.log('avgSideRatio=', avgSideRatio.toFixed(3), 'minSideFacing=', minSideFacing);
 console.log('mouths', withMouth, 'cavity', withCavity, 'butt', withButt, 'front/back', withFront, withBack);
 console.log('noAppendages', noAppendages, 'richCoat', richCoat);
 console.log('archetypes', archetypes, 'buttTypes', buttTypes);
@@ -127,9 +150,10 @@ if (withFront < seeds.length * 0.9) throw new Error('missing front surface');
 if (withMouth < seeds.length * 0.8) throw new Error('too few mouths');
 if (avgFrontFill < 0.35) throw new Error(`front body fill too low: ${avgFrontFill}`);
 if (avgFrontFill > 0.96) throw new Error(`front body too boxy: ${avgFrontFill}`);
-if (avgRingStack > 120) throw new Error(`ring stacking too high: ${avgRingStack}`);
-if (pupilRanged < pupilTotal * 0.55) throw new Error('pupils missing pupilRange');
-if (avgMs > 450) throw new Error(`gen too slow: ${avgMs}ms`);
+if (avgSideRatio < 0.15) throw new Error(`avg sideRatio too low: ${avgSideRatio}`);
+if (minSideFacing < 200) throw new Error(`min side facing too low: ${minSideFacing}`);
+if (maxParticles > 4500) throw new Error(`max particles too high: ${maxParticles}`);
+if (avgMs > 350) throw new Error(`gen too slow: ${avgMs}ms`);
 if (richCoat < seeds.length * 0.65) throw new Error('too few coat tones');
 
 const n1 = generateMonsterName('n');

@@ -1,5 +1,5 @@
 import { darken, lighten } from './palette';
-import { getCell } from './grid';
+import { getCell, storageKey } from './grid';
 import type { Rng } from './rng';
 import type {
   ButtArchetype,
@@ -9,7 +9,6 @@ import type {
   ParticlePart,
   SurfaceFacing,
 } from './types';
-import { surfaceCellKey } from './types';
 
 function backShellCells(grid: MonsterGrid): GridCell[] {
   return [...grid.cells.values()].filter(
@@ -31,7 +30,8 @@ function put(
   const facing = (source.facing ?? 'back') as SurfaceFacing;
   const protrude =
     part === 'butt' || part === 'butt_highlight' || part === 'tail' ? 0.06 : 0;
-  grid.cells.set(surfaceCellKey(source.col, source.row, facing), {
+  grid.cells.set(storageKey(source), {
+    ...source,
     col: source.col,
     row: source.row,
     x: source.x,

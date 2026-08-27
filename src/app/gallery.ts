@@ -68,8 +68,8 @@ export class Gallery extends Container {
     const view = new MonsterView({
       data,
       scale: this.cellSize * 0.4,
-      galleryYaw: 0.35,
-      galleryPitch: 0.12,
+      galleryYaw: 0.28,
+      galleryPitch: 0.08,
       thumbnail: true,
     });
     this.placeView(view, index);
@@ -140,8 +140,8 @@ export class Gallery extends Container {
         i++;
         continue;
       }
-      // Stagger: each view updates every other frame (phase by index)
-      if (((this.frame + i) & 1) === 0) v.tick(dt * 2);
+      // Stagger: each visible view updates every 3rd frame (phase by index)
+      if (((this.frame + i) % 3) === 0) v.tick(dt * 3);
       i++;
     }
     this.frame++;

@@ -1,9 +1,9 @@
-import { countSolidNeighbors, deleteCell, setCell } from './grid';
+import { countSolidNeighbors, getCell, setCell, storageKey } from './grid';
 import { darken } from './palette';
 import { dominantKind, fieldNormal, sampleField } from './field';
 import type { Rng } from './rng';
 import type { Blob, GridCell, MonsterGrid, MonsterPalette, SurfaceFacing } from './types';
-import { cellKey, surfaceCellKey } from './types';
+import { cellKey, surfaceCellKey, voxelKey } from './types';
 
 export interface RasterOptions {
   /** Approx columns across the body (baseline ~28 for scaleRef). */
@@ -14,6 +14,226 @@ export interface RasterOptions {
 }
 
 const BASELINE_RESOLUTION = 28;
+const VOXEL_BUDGET_MAX = 2800;
+const VOXEL_BUDGET_MIN = 700;
+
+const NEIGHBOR6: ReadonlyArray<readonly [number, number, number]> = [
+  [1, 0, 0],
+  [-1, 0, 0],
+  [0, 1, 0],
+  [0, -1, 0],
+  [0, 0, 1],
+  [0, 0, -1],
+];
+
+function facingFromNormal(nz: number): SurfaceFacing {
+  if (nz > 0.2) return 'front';
+  if (nz < -0.2) return 'back';
+  return 'side';
+}
+
+function blobBounds(blobs: Blob[]) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const b of blobs) {
+    minX = Math.min(minX, b.x - b.rx * 1.25);
+    maxX = Math.max(maxX, b.x + b.rx * 1.25);
+    minY = Math.min(minY, b.y - b.ry * 1.25);
+    maxY = Math.max(maxY, b.y + b.ry * 1.25);
+    minZ = Math.min(minZ, b.z - b.rz * 1.25);
+    maxZ = Math.max(maxZ, b.z + b.rz * 1.25);
+  }
+  return { minX, maxX, minY, maxY, minZ, maxZ };
+}
+
+function buildVoxelShell(
+  rng: Rng,
+  blobs: Blob[],
+  palette: MonsterPalette,
+  threshold: number,
+  resolution: number,
+): MonsterGrid {
+  const { minX, maxX, minY, maxY, minZ, maxZ } = blobBounds(blobs);
+  const spanX = Math.max(0.5, maxX - minX);
+  const spanY = Math.max(0.5, maxY - minY);
+  const spanZ = Math.max(0.5, maxZ - minZ);
+  const maxSpan = Math.max(spanX, spanY, spanZ);
+  const cell = maxSpan / resolution;
+  const nix = Math.ceil(spanX / cell) + 2;
+  const niy = Math.ceil(spanY / cell) + 2;
+  const niz = Math.ceil(spanZ / cell) + 2;
+  const originX = minX - cell;
+  const originY = minY - cell;
+  const originZ = minZ - cell;
+
+  const inside = new Uint8Array(nix * niy * niz);
+  const idx = (ix: number, iy: number, iz: number) => ix + nix * (iy + niy * iz);
+
+  for (let iz = 0; iz < niz; iz++) {
+    for (let iy = 0; iy < niy; iy++) {
+      for (let ix = 0; ix < nix; ix++) {
+        const x = originX + (ix + 0.5) * cell;
+        const y = originY + (iy + 0.5) * cell;
+        const z = originZ + (iz + 0.5) * cell;
+        if (sampleField(blobs, x, y, z) >= threshold) {
+          inside[idx(ix, iy, iz)] = 1;
+        }
+      }
+    }
+  }
+
+  const cells = new Map<string, GridCell>();
+  for (let iz = 0; iz < niz; iz++) {
+    for (let iy = 0; iy < niy; iy++) {
+      for (let ix = 0; ix < nix; ix++) {
+        if (!inside[idx(ix, iy, iz)]) continue;
+        let surface = false;
+        for (const [dx, dy, dz] of NEIGHBOR6) {
+          const nx = ix + dx;
+          const ny = iy + dy;
+          const nz = iz + dz;
+          if (nx < 0 || ny < 0 || nz < 0 || nx >= nix || ny >= niy || nz >= niz) {
+            surface = true;
+            break;
+          }
+          if (!inside[idx(nx, ny, nz)]) {
+            surface = true;
+            break;
+          }
+        }
+        if (!surface) continue;
+
+        let x = originX + (ix + 0.5) * cell;
+        let y = originY + (iy + 0.5) * cell;
+        let z = originZ + (iz + 0.5) * cell;
+        const { nx, ny, nz } = fieldNormal(blobs, x, y, z);
+        const facing = facingFromNormal(nz);
+        const kind = dominantKind(blobs, x, y, z);
+        const col = Math.round((x - originX) / cell);
+        const row = Math.round((y - originY) / cell);
+
+        cells.set(voxelKey(ix, iy, iz), {
+          col,
+          row,
+          x,
+          y,
+          z,
+          nx,
+          ny,
+          nz,
+          color: palette.base,
+          part: kind === 'appendage' ? 'appendage' : 'body',
+          phase: rng.float(0, Math.PI * 2),
+          size: 1,
+          tipFactor: 0,
+          facing,
+          voxelIx: ix,
+          voxelIy: iy,
+          voxelIz: iz,
+        });
+      }
+    }
+  }
+
+  // One pass 3D smooth — pull toward neighbor centroid in world space
+  const smoothUpdates: { key: string; x: number; y: number; z: number }[] = [];
+  for (const [key, c] of cells.entries()) {
+    if (!key.startsWith('v:') || c.voxelIx === undefined) continue;
+    let sx = 0;
+    let sy = 0;
+    let sz = 0;
+    let n = 0;
+    for (const [dx, dy, dz] of NEIGHBOR6) {
+      const nb = cells.get(voxelKey(c.voxelIx + dx, c.voxelIy! + dy, c.voxelIz! + dz));
+      if (nb) {
+        sx += nb.x;
+        sy += nb.y;
+        sz += nb.z;
+        n++;
+      }
+    }
+    if (n === 0) continue;
+    const pull = 0.32;
+    smoothUpdates.push({
+      key,
+      x: c.x + ((sx / n - c.x) * pull),
+      y: c.y + ((sy / n - c.y) * pull),
+      z: c.z + ((sz / n - c.z) * pull),
+    });
+  }
+  for (const u of smoothUpdates) {
+    const c = cells.get(u.key)!;
+    c.x = u.x + rng.float(-0.08, 0.08) * cell;
+    c.y = u.y + rng.float(-0.08, 0.08) * cell;
+    c.z = u.z + rng.float(-0.08, 0.08) * cell;
+    c.col = Math.round((c.x - originX) / cell);
+    c.row = Math.round((c.y - originY) / cell);
+    c.facing = facingFromNormal(c.nz);
+  }
+
+  let minC = Infinity;
+  let maxC = -Infinity;
+  let minR = Infinity;
+  let maxR = -Infinity;
+  for (const c of cells.values()) {
+    minC = Math.min(minC, c.col);
+    maxC = Math.max(maxC, c.col);
+    minR = Math.min(minR, c.row);
+    maxR = Math.max(maxR, c.row);
+  }
+  const cols = Math.max(4, maxC - minC + 3);
+  const rows = Math.max(4, maxR - minR + 3);
+  const scaleRef = resolution / BASELINE_RESOLUTION;
+
+  return {
+    cols,
+    rows,
+    cell,
+    originX,
+    originY,
+    scaleRef,
+    shear: 0,
+    shearOriginRow: minR,
+    cells,
+  };
+}
+
+/**
+ * Closed 3D voxel surface — front/back/side facets, no dual-sheet gap.
+ */
+export function extractSurfaceShell(
+  rng: Rng,
+  blobs: Blob[],
+  palette: MonsterPalette,
+  options: RasterOptions = {},
+): MonsterGrid {
+  let threshold = options.threshold ?? rng.float(1.2, 1.45);
+  let resolution = options.resolution ?? rng.int(32, 36);
+
+  let grid = buildVoxelShell(rng, blobs, palette, threshold, resolution);
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const n = grid.cells.size;
+    if (n >= VOXEL_BUDGET_MIN && n <= VOXEL_BUDGET_MAX) break;
+    if (n > VOXEL_BUDGET_MAX) {
+      threshold += 0.18;
+      if (attempt >= 4 && resolution > 30) {
+        resolution -= 2;
+      }
+    } else {
+      threshold = Math.max(0.9, threshold - 0.1);
+    }
+    grid = buildVoxelShell(rng, blobs, palette, threshold, resolution);
+  }
+
+  applyOrganicRim(rng, grid, palette);
+  applySilhouetteOutline(grid, palette);
+  applyFlecksAndDrips(rng, grid, palette);
+  return grid;
+}
 
 /** Flat base fill — coat patterns + lighting live in patterns.ts */
 function shadeColor(palette: MonsterPalette): number {
@@ -133,61 +353,9 @@ function mirrorSurfaceHalf(
   }
 }
 
-/** Morphological close on one facing layer. */
-function morphCloseLayer(
-  cells: Map<string, GridCell>,
-  facing: SurfaceFacing,
-  cols: number,
-  rows: number,
-  originX: number,
-  originY: number,
-  cell: number,
-  rng: Rng,
-): void {
-  const toFill: GridCell[] = [];
-  for (let row = 1; row < rows - 1; row++) {
-    for (let col = 1; col < cols - 1; col++) {
-      const key = surfaceCellKey(col, row, facing);
-      if (cells.has(key)) continue;
-      let n = 0;
-      let sample: GridCell | null = null;
-      for (const [dc, dr] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ] as const) {
-        const nb = cells.get(surfaceCellKey(col + dc, row + dr, facing));
-        if (nb) {
-          n++;
-          sample = nb;
-        }
-      }
-      if (n >= 3 && sample) {
-        toFill.push({
-          ...sample,
-          col,
-          row,
-          x: originX + col * cell,
-          y: originY + row * cell,
-          z: sample.z - 0.01,
-          phase: rng.float(0, Math.PI * 2),
-          part: 'body',
-          tipFactor: 0,
-          facing,
-          color: darken(sample.color, 0.05),
-        });
-      }
-    }
-  }
-  for (const f of toFill) {
-    cells.set(surfaceCellKey(f.col, f.row, facing), f);
-  }
-}
-
 /**
  * Dense dual-surface shell — filled grid scan + morphological close.
- * Ring overlap at rotation is handled in MonsterView z-buffer, not by sparsifying.
+ * @deprecated Use extractSurfaceShell — dual sheets show gap at rotation.
  */
 export function rasterizeDenseShell(
   rng: Rng,
@@ -195,75 +363,7 @@ export function rasterizeDenseShell(
   palette: MonsterPalette,
   options: RasterOptions = {},
 ): MonsterGrid {
-  const threshold = options.threshold ?? rng.float(1.0, 1.28);
-  const resolution = options.resolution ?? rng.int(72, 88);
-
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  for (const b of blobs) {
-    minX = Math.min(minX, b.x - b.rx * 1.25);
-    maxX = Math.max(maxX, b.x + b.rx * 1.25);
-    minY = Math.min(minY, b.y - b.ry * 1.25);
-    maxY = Math.max(maxY, b.y + b.ry * 1.25);
-    minZ = Math.min(minZ, b.z - b.rz * 1.25);
-    maxZ = Math.max(maxZ, b.z + b.rz * 1.25);
-  }
-
-  const spanX = Math.max(0.5, maxX - minX);
-  const spanY = Math.max(0.5, maxY - minY);
-  const cell = Math.max(spanX, spanY) / resolution;
-  const cols = Math.ceil(spanX / cell) + 2;
-  const rows = Math.ceil(spanY / cell) + 2;
-  const originX = minX - cell;
-  const originY = minY - cell;
-  const zStep = Math.max(0.04, (maxZ - minZ) / 18);
-
-  const cells = new Map<string, GridCell>();
-  const midCol = Math.floor(cols / 2);
-
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col <= midCol; col++) {
-      const x = originX + col * cell;
-      const y = originY + row * cell;
-
-      const zFront = frontSurfaceZ(blobs, x, y, minZ, maxZ, threshold, zStep);
-      if (zFront !== null) {
-        storeSurfaceCell(cells, col, row, 'front', x, y, zFront, blobs, palette, rng);
-      }
-
-      const zBack = backSurfaceZ(blobs, x, y, minZ, maxZ, threshold, zStep);
-      if (zBack !== null && (zFront === null || zBack < zFront - zStep * 0.5)) {
-        storeSurfaceCell(cells, col, row, 'back', x, y, zBack, blobs, palette, rng);
-      }
-    }
-  }
-
-  mirrorSurfaceHalf(cells, midCol, cols, originX, cell, 'front');
-  mirrorSurfaceHalf(cells, midCol, cols, originX, cell, 'back');
-  morphCloseLayer(cells, 'front', cols, rows, originX, originY, cell, rng);
-  morphCloseLayer(cells, 'back', cols, rows, originX, originY, cell, rng);
-
-  const scaleRef = resolution / BASELINE_RESOLUTION;
-  const grid: MonsterGrid = {
-    cols,
-    rows,
-    cell,
-    originX,
-    originY,
-    scaleRef,
-    shear: 0,
-    shearOriginRow: 0,
-    cells,
-  };
-  applyOrganicRim(rng, grid, palette);
-  applySilhouetteOutline(grid, palette);
-  applyFlecksAndDrips(rng, grid, palette);
-
-  return grid;
+  return extractSurfaceShell(rng, blobs, palette, options);
 }
 
 /**
@@ -275,7 +375,7 @@ export function rasterizeVolumeShell(
   palette: MonsterPalette,
   options: RasterOptions = {},
 ): MonsterGrid {
-  return rasterizeDenseShell(rng, blobs, palette, options);
+  return extractSurfaceShell(rng, blobs, palette, options);
 }
 
 /**
@@ -634,6 +734,7 @@ export function markRimFlags(grid: MonsterGrid): void {
 function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): void {
   const solid = [...grid.cells.values()].filter((c) => isSolidPart(c.part));
   if (solid.length < 30) return;
+  const dense = solid.length > 2200;
 
   const minC = Math.min(...solid.map((c) => c.col));
   const maxC = Math.max(...solid.map((c) => c.col));
@@ -645,7 +746,7 @@ function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): 
   const freq = rng.float(2.5, 5.5);
 
   const rim = rimCells(grid);
-  const erodeFrac = rng.float(0.08, 0.15);
+  const erodeFrac = dense ? rng.float(0.04, 0.08) : rng.float(0.08, 0.15);
   const erodeN = Math.floor(rim.length * erodeFrac);
   const scored = rim
     .map((c) => {
@@ -658,10 +759,11 @@ function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): 
   for (let i = 0; i < erodeN && i < scored.length; i++) {
     if (scored[i]!.wave < 0.15 && rng.chance(0.5)) continue;
     const cell = scored[i]!.c;
-    deleteCell(grid, cell.col, cell.row, cell.facing);
+    grid.cells.delete(storageKey(cell));
   }
 
-  // Add 2–5 organic bumps on rim
+  // Add organic bumps on rim — skip when shell is already dense
+  if (dense) return;
   const bumpN = rng.int(2, 5);
   const freshRim = rimCells(grid);
   for (let b = 0; b < bumpN && freshRim.length > 0; b++) {
@@ -673,8 +775,7 @@ function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): 
     for (let k = 0; k < size; k++) {
       const col = anchor.col + outC * rng.int(0, 2) + rng.int(-1, 1);
       const row = anchor.row + outR * rng.int(0, 2) + rng.int(-1, 1);
-      const key = surfaceCellKey(col, row, facing);
-      if (grid.cells.has(key)) continue;
+      if (getCell(grid, col, row, facing)) continue;
       setCell(grid, {
         col,
         row,
@@ -842,7 +943,10 @@ function applyFlecksAndDrips(rng: Rng, grid: MonsterGrid, palette: MonsterPalett
   // Prefer top / side rim for hair tufts
   const topRim = rim.filter((c) => c.row >= midR);
   const anchors = topRim.length >= 2 ? topRim : rim;
-  const tuftCount = rng.int(2, Math.max(3, Math.round(5 * grid.scaleRef * 0.55)));
+  const denseShell = grid.cells.size > 2000;
+  const tuftCount = denseShell
+    ? rng.int(1, 2)
+    : rng.int(2, Math.max(3, Math.round(5 * grid.scaleRef * 0.55)));
 
   for (let t = 0; t < tuftCount; t++) {
     const start = anchors[rng.int(0, anchors.length - 1)]!;

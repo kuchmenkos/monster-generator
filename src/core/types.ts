@@ -93,6 +93,18 @@ export interface GridCell {
   isRim?: boolean;
   pupilRange?: { x: number; y: number };
   glow?: boolean;
+  /** Voxel grid indices — set for 3D shell cells */
+  voxelIx?: number;
+  voxelIy?: number;
+  voxelIz?: number;
+}
+
+/** Projection masks for painting face/butt on a 3D voxel shell. */
+export interface FeatureMasks {
+  /** col,row → storage key of front-most surface cell */
+  front: Map<string, string>;
+  /** col,row → storage key of back-most surface cell */
+  back: Map<string, string>;
 }
 
 export interface MonsterGrid {
@@ -110,6 +122,8 @@ export interface MonsterGrid {
   shear: number;
   shearOriginRow: number;
   cells: Map<string, GridCell>;
+  /** Front/back 2D masks built after voxel shell extraction */
+  featureMasks?: FeatureMasks;
 }
 
 export interface AnimParams {
@@ -185,4 +199,9 @@ export function cellKey(col: number, row: number): string {
 /** Dual-surface grid key — front and back can share col/row. */
 export function surfaceCellKey(col: number, row: number, facing: SurfaceFacing): string {
   return `${col},${row}:${facing}`;
+}
+
+/** Unique 3D voxel key — no col/row collapse. */
+export function voxelKey(ix: number, iy: number, iz: number): string {
+  return `v:${ix},${iy},${iz}`;
 }

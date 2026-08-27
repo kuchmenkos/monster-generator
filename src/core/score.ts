@@ -64,6 +64,8 @@ export function uniqueBodyColors(particles: Particle[]): number {
  * Limbless, organic body, front face + rear butt required.
  */
 export function scoreBulalashka(data: MonsterData): number {
+  if (data.particles.length > 4500) return -1000;
+
   const appendages = data.particles.filter((p) => p.part === 'appendage');
   if (appendages.length > 0) return -1000;
 
@@ -118,12 +120,15 @@ export function scoreBulalashka(data: MonsterData): number {
   }
 
   const frontBody = data.particles.filter((p) => p.facing === 'front' && p.part === 'body');
+  const sideBody = data.particles.filter((p) => p.facing === 'side' && p.part === 'body');
   const backBody = data.particles.filter(
     (p) => p.facing === 'back' && (p.part === 'body' || p.part === 'butt'),
   );
-  if (frontBody.length < 350) score -= 35;
-  else if (frontBody.length >= 400) score += 10;
+  if (frontBody.length < 120) score -= 35;
+  else if (frontBody.length >= 180) score += 10;
   else score += 4;
+  if (sideBody.length < 200) score -= 20;
+  else score += Math.min(14, sideBody.length * 0.04);
   if (backBody.length < 12) score -= 25;
   else score += 8;
 
@@ -135,8 +140,9 @@ export function scoreBulalashka(data: MonsterData): number {
 
   // Shell density — volume rasterizer should yield plump organic clouds
   const shellBody = data.particles.filter((p) => p.part === 'body' || p.part === 'butt');
-  if (shellBody.length < 500) score -= 20;
-  else if (shellBody.length >= 900) score += 8;
+  if (shellBody.length < 400) score -= 20;
+  else if (shellBody.length >= 700 && shellBody.length <= 3200) score += 8;
+  else if (shellBody.length > 4000) score -= 25;
 
   // Ring artifact detector — penalize many particles stacked on same col/row
   const stackMap = new Map<string, number>();
@@ -146,10 +152,9 @@ export function scoreBulalashka(data: MonsterData): number {
   }
   let stackHits = 0;
   for (const n of stackMap.values()) {
-    if (n > 2) stackHits += n - 2;
+    if (n > 4) stackHits += n - 4;
   }
-  if (stackHits > shellBody.length * 0.08) score -= 18;
-  else if (stackHits < shellBody.length * 0.02) score += 6;
+  if (stackHits > shellBody.length * 0.12) score -= 12;
 
   // Butt protrusion — rear hemisphere extends behind median Z
   const backZ = data.particles

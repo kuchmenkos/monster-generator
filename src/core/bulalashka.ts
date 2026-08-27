@@ -134,8 +134,8 @@ export function createProceduralBulalashka(rng: Rng): BulalashkaBlobSet {
   const blobs: Blob[] = [];
 
   const spineCount = rng.int(8, 14);
-  const frontAnchor = { x: rng.float(-0.06, 0.06), y: rng.float(0.12, 0.32), z: rng.float(0.28, 0.48) };
-  const backAnchor = { x: rng.float(-0.05, 0.05), y: rng.float(-0.38, -0.24), z: rng.float(-0.38, -0.26) };
+  const frontAnchor = { x: rng.float(-0.06, 0.06), y: rng.float(0.12, 0.32), z: rng.float(0.22, 0.38) };
+  const backAnchor = { x: rng.float(-0.05, 0.05), y: rng.float(-0.38, -0.24), z: rng.float(-0.38, -0.22) };
   const amp = rng.float(0.12, 0.28);
   const baseR = rng.float(0.32, 0.48);
 
@@ -175,7 +175,7 @@ export function createProceduralBulalashka(rng: Rng): BulalashkaBlobSet {
   }
 
   // Butt shelf — protrudes on -Z
-  const shelfCount = rng.int(2, 3);
+  const shelfCount = rng.int(1, 2);
   for (let s = 0; s < shelfCount; s++) {
     blobs.push(
       bodyBlob(
@@ -185,7 +185,7 @@ export function createProceduralBulalashka(rng: Rng): BulalashkaBlobSet {
         rng.float(0.4, 0.55),
         rng.float(0.34, 0.48),
         rng.float(0.4, 0.55),
-        rng.float(1.0, 1.3),
+        rng.float(0.9, 1.15),
       ),
     );
   }

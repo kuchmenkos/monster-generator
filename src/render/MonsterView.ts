@@ -45,8 +45,8 @@ export interface MonsterViewOptions {
 }
 
 const PERSPECTIVE_K = 0.38;
-const DEFAULT_GALLERY_YAW = 0.35;
-const DEFAULT_GALLERY_PITCH = 0.12;
+const DEFAULT_GALLERY_YAW = 0.28;
+const DEFAULT_GALLERY_PITCH = 0.08;
 
 function isShellPart(part: ParticlePart): boolean {
   return part === 'body' || part === 'butt' || part === 'appendage';
@@ -124,7 +124,7 @@ export class MonsterView extends ParticleContainer {
     this.eventMode = 'static';
     this.cursor = this.allowRotate ? 'grab' : 'pointer';
 
-    const pxMul = this.thumbnail ? 1.28 : 1.18;
+    const pxMul = this.thumbnail ? 1.22 : 1.18;
     this.cellPx = Math.max(2, options.data.cellSize * this.displayScale * pxMul);
 
     const tex = getParticleTexture();
@@ -275,7 +275,7 @@ export class MonsterView extends ParticleContainer {
 
   setDisplayScale(scale: number): void {
     this.displayScale = scale;
-    const pxMul = this.thumbnail ? 1.28 : 1.18;
+    const pxMul = this.thumbnail ? 1.22 : 1.18;
     this.cellPx = Math.max(2, this.data.cellSize * scale * pxMul);
     this.refreshBounds();
     this.updateHitArea();
@@ -435,8 +435,6 @@ export class MonsterView extends ParticleContainer {
     }
 
     const frames: FrameState[] = [];
-    const binSize = Math.max(3, this.cellPx * 0.85);
-    const zWinners = new Map<string, number>();
 
     for (const lp of this.live) {
       const { home, part } = lp;
@@ -504,6 +502,7 @@ export class MonsterView extends ParticleContainer {
       const sy = proj.py * scale;
 
       let sizeMul = home.size * proj.depth;
+      if (home.facing === 'side') sizeMul *= 1.08;
       let scaleYMul = 1;
       if ((part === 'eye' || part === 'pupil' || part === 'outline') && blink > 0) {
         scaleYMul = Math.max(0.12, 1 - blink);
@@ -526,22 +525,11 @@ export class MonsterView extends ParticleContainer {
       }
 
       frames.push({ lp, sx, sy, sortZ: proj.rz, sizeMul, scaleYMul, alpha });
-
-      if (isShellPart(part)) {
-        const key = `${Math.round(sx / binSize)},${Math.round(sy / binSize)}`;
-        const prev = zWinners.get(key);
-        if (prev === undefined || proj.rz > prev) zWinners.set(key, proj.rz);
-      }
     }
 
     for (const f of frames) {
-      const { lp, sx, sy, sortZ, sizeMul, scaleYMul } = f;
-      let alpha = f.alpha;
-      if (isShellPart(lp.part)) {
-        const key = `${Math.round(sx / binSize)},${Math.round(sy / binSize)}`;
-        const best = zWinners.get(key);
-        if (best !== undefined && sortZ < best - 0.002) alpha = 0;
-      }
+      const { lp, sx, sy, sizeMul, scaleYMul } = f;
+      const alpha = f.alpha;
 
       lp.sprite.x = sx;
       lp.sprite.y = sy;

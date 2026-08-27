@@ -1,15 +1,16 @@
 import { applyButtFeatures } from './butt';
 import { createProceduralBulalashka } from './bulalashka';
 import { applyFeatures } from './features';
+import { buildFeatureMasks } from './grid';
 import { generateMonsterName } from './names';
 import { generatePalette } from './palette';
 import { applyPatterns } from './patterns';
-import { applyGroundShadow, gridToParticles, rasterizeDenseShell } from './particles';
+import { applyGroundShadow, extractSurfaceShell, gridToParticles } from './particles';
 import { createRng } from './rng';
 import { scoreBulalashka } from './score';
 import type { AnimParams, MonsterData, Particle } from './types';
 
-const CANDIDATE_COUNT = 4;
+const CANDIDATE_COUNT = 3;
 
 function computeBounds(particles: Particle[]) {
   let minX = Infinity;
@@ -54,17 +55,19 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
   const { blobs, bodyArchetype, buttArchetype } = createProceduralBulalashka(rng);
   const threshold = rng.float(1.0, 1.28);
 
-  let grid = rasterizeDenseShell(rng, blobs, palette, {
-    resolution: rng.int(72, 88),
+  let grid = extractSurfaceShell(rng, blobs, palette, {
+    resolution: rng.int(32, 36),
     threshold,
   });
 
   if (grid.cells.size < 350) {
-    grid = rasterizeDenseShell(rng, blobs, palette, {
-      resolution: 80,
+    grid = extractSurfaceShell(rng, blobs, palette, {
+      resolution: 40,
       threshold: 0.95,
     });
   }
+
+  buildFeatureMasks(grid);
 
   applyGroundShadow(grid);
   applyPatterns(rng, grid, palette);

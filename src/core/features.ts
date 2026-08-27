@@ -1,7 +1,8 @@
+import { getCell, storageKey } from './grid';
 import { darken, lighten } from './palette';
 import type { Rng } from './rng';
 import type { GridCell, MonsterGrid, MonsterPalette, MouthRole, ParticlePart, SurfaceFacing } from './types';
-import { cellKey, surfaceCellKey } from './types';
+import { cellKey } from './types';
 
 type EyeShape =
   | 'round'
@@ -30,30 +31,37 @@ function put(
   size = 1,
   mouthRole?: MouthRole,
 ): void {
-  const frontKey = surfaceCellKey(col, row, 'front');
-  const legacyKey = cellKey(col, row);
-  const key = grid.cells.has(frontKey) ? frontKey : legacyKey;
-  const existing = grid.cells.get(key);
+  const source = getCell(grid, col, row, 'front') ?? base;
+  const key = storageKey(source);
   grid.cells.set(key, {
+    ...source,
     col,
     row,
-    x: grid.originX + col * grid.cell,
-    y: grid.originY + row * grid.cell,
-    z: (existing?.z ?? 0) + zBoost,
-    nx: 0.1,
-    ny: 0.1,
-    nz: 1,
+    x: source.x,
+    y: source.y,
+    z: source.z + zBoost,
+    nx: source.nx ?? 0.1,
+    ny: source.ny ?? 0.1,
+    nz: source.nz ?? 1,
     color,
     part,
-    phase: base.phase,
+    phase: source.phase,
     size,
     tipFactor: 0,
-    facing: (existing?.facing ?? 'front') as SurfaceFacing,
+    facing: (source.facing ?? 'front') as SurfaceFacing,
     mouthRole,
   });
 }
 
 function bodyOnly(grid: MonsterGrid): GridCell[] {
+  if (grid.featureMasks) {
+    const out: GridCell[] = [];
+    for (const key of grid.featureMasks.front.values()) {
+      const c = grid.cells.get(key);
+      if (c?.part === 'body') out.push(c);
+    }
+    return out;
+  }
   return [...grid.cells.values()].filter(
     (c) => c.part === 'body' && (c.facing === 'front' || c.facing === undefined),
   );
@@ -61,7 +69,7 @@ function bodyOnly(grid: MonsterGrid): GridCell[] {
 
 /** True if col/row is on body (or within 1-cell soft rim for lip ends). */
 function nearBody(grid: MonsterGrid, col: number, row: number, soft = false): boolean {
-  const front = grid.cells.get(surfaceCellKey(col, row, 'front'));
+  const front = getCell(grid, col, row, 'front');
   if (front?.part === 'body') return true;
   if (grid.cells.get(cellKey(col, row))?.part === 'body') return true;
   if (!soft) return false;
@@ -71,7 +79,7 @@ function nearBody(grid: MonsterGrid, col: number, row: number, soft = false): bo
     [0, 1],
     [0, -1],
   ] as const) {
-    const nb = grid.cells.get(surfaceCellKey(col + dc, row + dr, 'front'));
+    const nb = getCell(grid, col + dc, row + dr, 'front');
     if (nb?.part === 'body') return true;
     if (grid.cells.get(cellKey(col + dc, row + dr))?.part === 'body') return true;
   }
@@ -79,8 +87,7 @@ function nearBody(grid: MonsterGrid, col: number, row: number, soft = false): bo
 }
 
 function cellAt(grid: MonsterGrid, col: number, row: number): GridCell | undefined {
-  const frontKey = surfaceCellKey(col, row, 'front');
-  return grid.cells.get(frontKey) ?? grid.cells.get(cellKey(col, row));
+  return getCell(grid, col, row, 'front') ?? grid.cells.get(cellKey(col, row));
 }
 
 function faceRegion(grid: MonsterGrid, shiftX: number, shiftY: number): GridCell[] {
