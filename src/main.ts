@@ -10,8 +10,16 @@ import {
   toggleFavorite,
 } from './app/feedback';
 import { Gallery } from './app/gallery';
-import { createUi, type GalleryTab } from './app/ui';
+import { createUi, type GalleryTab, type VoicePanelState } from './app/ui';
 import { generateMonster } from './core/monster';
+import {
+  generateVoices,
+  getCachedPreviews,
+  getSelectedIndex,
+  playPreview,
+  setSelectedIndex,
+  stopPreview,
+} from './app/voice';
 import { MonsterView } from './render/MonsterView';
 
 type Mode = 'gallery' | 'detail';
@@ -50,6 +58,26 @@ async function main() {
   let galleryTab: GalleryTab = 'all';
   let navSeeds: string[] = [];
   let currentName = '';
+  let playingVoiceIndex: number | null = null;
+  let voiceAbort: AbortController | null = null;
+
+  const stopVoicePlayback = () => {
+    stopPreview();
+    playingVoiceIndex = null;
+  };
+
+  const refreshVoicePanel = (seed: string, loading = false) => {
+    const cached = getCachedPreviews(seed);
+    const selected = getSelectedIndex(seed);
+    const state: VoicePanelState = {
+      visible: true,
+      loading,
+      previews: cached?.previews.map((p) => ({ index: p.index })) ?? null,
+      selectedIndex: selected,
+      playingIndex: playingVoiceIndex,
+    };
+    ui.setVoicePanel(state);
+  };
 
   const cols = Math.max(3, Math.min(8, Math.floor(window.innerWidth / 150)));
   const rows = Math.max(2, Math.ceil(12 / cols));
@@ -65,6 +93,9 @@ async function main() {
 
   const showGallery = () => {
     mode = 'gallery';
+    voiceAbort?.abort();
+    voiceAbort = null;
+    stopVoicePlayback();
     detail.visible = false;
     detail.clear();
     gallery.visible = true;
@@ -75,6 +106,9 @@ async function main() {
 
   const openDetail = (seed: string, seedsContext: string[]) => {
     mode = 'detail';
+    voiceAbort?.abort();
+    voiceAbort = null;
+    stopVoicePlayback();
     gallery.visible = false;
     detail.visible = true;
     const data = detail.show(seed);
@@ -82,6 +116,7 @@ async function main() {
     navSeeds = seedsContext;
     writeSeedToUrl(seed);
     ui.setMode('detail', { seed, name: data.name });
+    refreshVoicePanel(seed);
     layout();
   };
 
@@ -202,6 +237,60 @@ async function main() {
     onPrev: () => navigate(-1),
     onNext: () => navigate(1),
     onTab: (tab) => switchTab(tab),
+    onGenerateVoices: async () => {
+      const seed = detail.seed;
+      if (!seed) return;
+      const cached = getCachedPreviews(seed);
+      if (cached && cached.previews.length > 0) {
+        refreshVoicePanel(seed);
+        return;
+      }
+      voiceAbort?.abort();
+      voiceAbort = new AbortController();
+      const ac = voiceAbort;
+      stopVoicePlayback();
+      refreshVoicePanel(seed, true);
+      try {
+        await generateVoices(seed, ac.signal);
+        if (detail.seed !== seed) return;
+        refreshVoicePanel(seed);
+      } catch (err) {
+        if (ac.signal.aborted) return;
+        refreshVoicePanel(seed);
+        const msg = err instanceof Error ? err.message : String(err);
+        ui.showToast(msg);
+      }
+    },
+    onPlayVoice: (index) => {
+      const seed = detail.seed;
+      if (!seed) return;
+      const cached = getCachedPreviews(seed);
+      const preview = cached?.previews.find((p) => p.index === index);
+      if (!preview?.audioBase64) {
+        ui.showToast('Спочатку згенеруй голоси');
+        return;
+      }
+      if (playingVoiceIndex === index) {
+        stopVoicePlayback();
+        refreshVoicePanel(seed);
+        return;
+      }
+      stopVoicePlayback();
+      playingVoiceIndex = index;
+      refreshVoicePanel(seed);
+      playPreview(preview.audioBase64, () => {
+        playingVoiceIndex = null;
+        if (detail.seed === seed) refreshVoicePanel(seed);
+      });
+    },
+    onSelectVoice: (index) => {
+      const seed = detail.seed;
+      if (!seed) return;
+      const current = getSelectedIndex(seed);
+      const next = current === index ? null : index;
+      setSelectedIndex(seed, next);
+      refreshVoicePanel(seed);
+    },
   });
 
   const layout = () => {

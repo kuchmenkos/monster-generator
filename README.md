@@ -11,6 +11,8 @@ npm run dev
 
 Відкрий http://localhost:5173
 
+Голоси (ElevenLabs, лише `npm run dev`): скопіюй `.env.example` → `.env.local`, додай `ELEVENLABS_API_KEY`. У деталі — кнопка **Голос** генерує 3 превʼю.
+
 ## Що є в MVP
 
 - Детермінована генерація за `seed` (один seed → завжди той самий монстр)
@@ -28,5 +30,6 @@ TypeScript · Vite · PixiJS 8 (`ParticleContainer` для батченого р
 ```
 src/core/     # чиста генерація (rng, palette, field, particles, features, monster)
 src/render/   # MonsterView — анімована хмара частинок
-src/app/      # gallery, detail, ui
+src/app/      # gallery, detail, ui, voice
+vite-plugins/ # feedback writer + ElevenLabs voice proxy
 ```
