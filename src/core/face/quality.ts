@@ -171,6 +171,40 @@ export function stripBottomAppendages(grid: MonsterGrid): number {
   return removed;
 }
 
+/** Drop appendage cells not 4-connected to body (ear counts as a solid bridge). */
+export function pruneDetachedAppendages(grid: MonsterGrid): number {
+  const walkable = new Set<string>();
+  const bodyKeys: string[] = [];
+  for (const c of grid.cells.values()) {
+    if (c.part === 'body' || c.part === 'appendage' || c.part === 'ear') {
+      walkable.add(`${c.col},${c.row}`);
+    }
+    if (c.part === 'body') bodyKeys.push(`${c.col},${c.row}`);
+  }
+  if (bodyKeys.length === 0) return 0;
+  const visited = new Set<string>(bodyKeys);
+  const q = [...bodyKeys];
+  let qi = 0;
+  while (qi < q.length) {
+    const cur = q[qi++]!;
+    const comma = cur.indexOf(',');
+    const c = Number(cur.slice(0, comma));
+    const r = Number(cur.slice(comma + 1));
+    for (const [dc, dr] of ORTHO) {
+      const nk = `${c + dc},${r + dr}`;
+      if (!walkable.has(nk) || visited.has(nk)) continue;
+      visited.add(nk);
+      q.push(nk);
+    }
+  }
+  let removed = 0;
+  for (const [k, c] of [...grid.cells.entries()]) {
+    if (c.part !== 'appendage') continue;
+    if (!visited.has(`${c.col},${c.row}`) && grid.cells.delete(k)) removed++;
+  }
+  return removed;
+}
+
 /** Count face particles not 4-connected to any body cell (via face/appendage bridge). */
 export function countFloatingFaceParticles(particles: Particle[]): number {
   const visited = reachableFromBody(particles);

@@ -21,9 +21,11 @@ function keyOf(col: number, row: number): string {
   return `${col},${row}`;
 }
 
-/** Appendage cells not 4-connected to any body cell. */
+/** Appendage cells not 4-connected to any body cell (ear counts as a solid bridge). */
 export function countDetachedAppendages(particles: Particle[]): number {
-  const solid = particles.filter((p) => p.part === 'body' || p.part === 'appendage');
+  const solid = particles.filter(
+    (p) => p.part === 'body' || p.part === 'appendage' || p.part === 'ear',
+  );
   if (solid.length === 0) return 0;
   const keys = new Set(solid.map((p) => keyOf(p.col, p.row)));
   const bodyKeys = particles

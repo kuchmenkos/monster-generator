@@ -15,7 +15,7 @@ import { paintLids } from './lids';
 import { paintMouthFromCurve } from './mouth';
 import { paintMustache } from './mustache';
 import { paintNose } from './nose';
-import { pruneFloatingFeatures, pruneOffSilhouetteFace, pruneOrphanFlecks, stripBottomAppendages } from './quality';
+import { pruneDetachedAppendages, pruneFloatingFeatures, pruneOffSilhouetteFace, pruneOrphanFlecks, stripBottomAppendages } from './quality';
 
 /**
  * boolala.boo face pipeline:
@@ -101,4 +101,5 @@ export function applyFace(
   pruneOffSilhouetteFace(grid);
   pruneOrphanFlecks(grid);
   stripBottomAppendages(grid);
+  pruneDetachedAppendages(grid);
 }

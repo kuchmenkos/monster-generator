@@ -6,6 +6,7 @@ export {
   pruneFloatingFeatures,
   pruneOffSilhouetteFace,
   pruneOrphanFlecks,
+  pruneDetachedAppendages,
   stripBottomAppendages,
   stripFloatingFaceParticles,
 } from './quality';
