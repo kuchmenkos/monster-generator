@@ -10,6 +10,7 @@ import { paintLids } from './lids';
 import { faceRegion } from './masks';
 import { paintMouthFromCurve } from './mouth';
 import { paintNose } from './nose';
+import { pruneFloatingFeatures } from './quality';
 import type {
   BrowStyle,
   EarStyle,
@@ -261,4 +262,7 @@ export function applyFace(
       rng.pick<HairStyle>(['mohawk', 'curtain', 'afro_puff', 'spikes', 'braid', 'wild_mane', 'bald_patch']),
     );
   }
+
+  // Quality: strip floating face cells (defects / lag from orphan particles)
+  pruneFloatingFeatures(grid);
 }

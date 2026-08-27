@@ -1,4 +1,5 @@
 import type { MonsterData, Particle } from './types';
+import { countFloatingFaceParticles, PARTICLE_BUDGET } from './face/quality';
 
 const ORTHO: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
@@ -110,7 +111,7 @@ export function scoreMonster(data: MonsterData): number {
   const mouths = data.particles.filter(
     (p) => p.part === 'mouth' || p.part === 'tooth',
   );
-  if (eyes.length === 0) score -= 30;
+  if (eyes.length === 0) return -1000; // hard reject — never ship eyeless
   else score += 6;
   if (pupils.length === 0) score -= 10;
   if (mouths.length === 0) score -= 20;
@@ -143,9 +144,14 @@ export function scoreMonster(data: MonsterData): number {
   const rightFace = data.particles.filter((p) => p.faceSide === 1).length;
   if (leftFace > 0 && rightFace > 0 && Math.abs(leftFace - rightFace) > 2) score += 3;
 
-  // Reject extreme particle bloat (lag guard)
-  if (data.particles.length > 4200) score -= 40;
-  if (hair.length > 160) score -= 15;
+  // Floating face features (defects)
+  const floatingFace = countFloatingFaceParticles(data.particles);
+  if (floatingFace > 0) score -= 15 + Math.min(40, floatingFace);
+
+  // Reject extreme particle bloat (lag guard) — hard reject above budget
+  if (data.particles.length > PARTICLE_BUDGET) return -1000;
+  if (data.particles.length > PARTICLE_BUDGET - 200) score -= 40;
+  if (hair.length > 140) score -= 15;
 
   // --- Limbs / flecks ---
   const limbs = data.particles.filter((p) => p.part === 'appendage');

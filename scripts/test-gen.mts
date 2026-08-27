@@ -1,3 +1,4 @@
+import { countFloatingFaceParticles, PARTICLE_BUDGET } from '../src/core/face/quality';
 import { bboxFill, countDetachedAppendages, uniqueBodyColors } from '../src/core/score';
 import { generateMonster } from '../src/core/monster';
 import { generateMonsterName } from '../src/core/names';
@@ -25,6 +26,8 @@ let hasAccent = 0;
 let hasEar = 0;
 let maxParticles = 0;
 let maxHair = 0;
+let floatingSum = 0;
+let floatingWorst = 0;
 const archetypes: Record<string, number> = {};
 
 for (const seed of seeds) {
@@ -35,6 +38,14 @@ for (const seed of seeds) {
   archetypes[m.archetype] = (archetypes[m.archetype] || 0) + 1;
   fillSum += bboxFill(m.particles);
   maxParticles = Math.max(maxParticles, m.particles.length);
+
+  const floating = countFloatingFaceParticles(m.particles);
+  floatingSum += floating;
+  floatingWorst = Math.max(floatingWorst, floating);
+  if (floating > 0) throw new Error(`floating face features on ${seed}: ${floating}`);
+  if (m.particles.length > PARTICLE_BUDGET) {
+    throw new Error(`particle budget exceeded on ${seed}: ${m.particles.length}`);
+  }
 
   const body = m.particles.filter((p) => p.part === 'body');
   const mouths = m.particles.filter((p) => p.part === 'mouth' || p.part === 'tooth');
@@ -93,7 +104,6 @@ for (const seed of seeds) {
   }
 
   if (!m.scaleRef || m.scaleRef < 2) throw new Error('scaleRef too low');
-  if (m.particles.length > 4500) throw new Error(`too many particles on ${seed}: ${m.particles.length}`);
 }
 
 const a = generateMonster('alpha-check');
@@ -136,6 +146,10 @@ console.log(
   maxHair,
   'maxParticles=',
   maxParticles,
+  'floatingSum=',
+  floatingSum,
+  'floatingWorst=',
+  floatingWorst,
 );
 console.log('deterministic', same);
 
@@ -146,7 +160,7 @@ if (mouthWidthOk < withMouth * 0.85) throw new Error('mouths too wide');
 if (avgFill > 0.78) throw new Error('avg bbox fill too high (boxy)');
 if (pupilRanged < pupilTotal * 0.7) throw new Error('pupils missing pupilRange');
 if (boxyRate > 0.02) throw new Error('too many boxy archetypes');
-if (avgMs > 400) throw new Error(`gen too slow: ${avgMs}ms`);
+if (avgMs > 200) throw new Error(`gen too slow: ${avgMs}ms (budget 200ms)`);
 if (withAppend < seeds.length * 0.6) throw new Error('too few limbs');
 if (connectedLimbs < seeds.length * 0.92) throw new Error('too many detached limbs');
 if (richCoat < seeds.length * 0.7) throw new Error('too few coat tones');
@@ -154,7 +168,8 @@ if (hasNose < seeds.length * 0.7) throw new Error('too few noses');
 if (hasHair < seeds.length * 0.65) throw new Error('too few hairstyles');
 if (hasBrow < seeds.length * 0.6) throw new Error('too few brows');
 if (maxHair > 180) throw new Error(`hair cell bloat: ${maxHair}`);
-if (maxParticles > 4500) throw new Error(`particle bloat: ${maxParticles}`);
+if (maxParticles > PARTICLE_BUDGET) throw new Error(`particle bloat: ${maxParticles}`);
+if (floatingSum > 0) throw new Error(`floating face features total=${floatingSum}`);
 
 const n1 = generateMonsterName('n');
 if (n1 !== generateMonsterName('n')) throw new Error('name');

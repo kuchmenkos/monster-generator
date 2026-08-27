@@ -314,60 +314,65 @@ export class MonsterView extends ParticleContainer {
       x *= 1 + breath * 0.45;
       y *= 1 - breath;
 
-      const heightFactor = Math.min(1.2, Math.max(0, (home.y + 1) * 0.5));
-      const depthFactor = 0.55 + home.z * 0.85;
-      const appendBoost =
-        part === 'appendage'
-          ? 1 + home.tipFactor * 1.6
-          : part === 'hair'
-            ? 2.8
-            : part === 'fleck'
-              ? 2.4
-              : part === 'lash'
-                ? 1.6
-                : part === 'ear'
-                  ? 1.3 + home.tipFactor
-                  : part === 'aura'
-                    ? 1.4
-                    : 1;
-      const strandPhase = (home.hairStrand ?? 0) * 0.4;
-      const sway =
-        (swayBase +
-          Math.sin(t * anim.swayFreq + home.row * 0.15 + strandPhase) * anim.swayAmp * 0.25) *
-        heightFactor *
-        depthFactor *
-        appendBoost;
-      x += sway;
+      // Nose/freckle stay planted (plan: static) — skip sway/jiggle for 60fps
+      const isStaticFace = part === 'nose' || part === 'freckle';
 
-      // Hair wave — extra lateral motion along strand
-      if (part === 'hair') {
-        const wave =
-          Math.sin(t * (anim.swayFreq * 1.35) + strandPhase + home.tipFactor * 2.2) *
-          anim.jiggleAmp *
-          (0.8 + home.tipFactor * 2.2);
-        x += wave;
-        y += Math.cos(t * 2.1 + home.phase) * anim.jiggleAmp * home.tipFactor * 0.6;
-      }
+      if (!isStaticFace) {
+        const heightFactor = Math.min(1.2, Math.max(0, (home.y + 1) * 0.5));
+        const depthFactor = 0.55 + home.z * 0.85;
+        const appendBoost =
+          part === 'appendage'
+            ? 1 + home.tipFactor * 1.6
+            : part === 'hair'
+              ? 2.8
+              : part === 'fleck'
+                ? 2.4
+                : part === 'lash'
+                  ? 1.6
+                  : part === 'ear'
+                    ? 1.3 + home.tipFactor
+                    : part === 'aura'
+                      ? 1.4
+                      : 1;
+        const strandPhase = (home.hairStrand ?? 0) * 0.4;
+        const sway =
+          (swayBase +
+            Math.sin(t * anim.swayFreq + home.row * 0.15 + strandPhase) * anim.swayAmp * 0.25) *
+          heightFactor *
+          depthFactor *
+          appendBoost;
+        x += sway;
 
-      // Coherent body: only rim / limbs / flecks / hair jiggle independently
-      const canJig =
-        (home.isRim && part !== 'body') ||
-        (part === 'appendage' && home.tipFactor > 0.28) ||
-        part === 'fleck' ||
-        part === 'hair' ||
-        part === 'lash' ||
-        part === 'ear' ||
-        part === 'aura' ||
-        home.tipFactor > 0.28;
-      if (canJig) {
-        const jig = anim.jiggleAmp * (0.4 + home.tipFactor * 1.2) * (1 + jitteriness);
-        x += Math.sin(t * 3.1 + home.phase) * jig * appendBoost;
-        y += Math.cos(t * 2.7 + home.phase * 1.3) * jig * 0.7;
-      }
+        // Hair wave — extra lateral motion along strand
+        if (part === 'hair') {
+          const wave =
+            Math.sin(t * (anim.swayFreq * 1.35) + strandPhase + home.tipFactor * 2.2) *
+            anim.jiggleAmp *
+            (0.8 + home.tipFactor * 2.2);
+          x += wave;
+          y += Math.cos(t * 2.1 + home.phase) * anim.jiggleAmp * home.tipFactor * 0.6;
+        }
 
-      if (shiver > 0 && canJig) {
-        x += Math.sin(t * 48 + home.phase * 7) * shiver;
-        y += Math.cos(t * 52 + home.phase * 5) * shiver * 0.7;
+        // Coherent body: only rim / limbs / flecks / hair jiggle independently
+        const canJig =
+          (home.isRim && part !== 'body') ||
+          (part === 'appendage' && home.tipFactor > 0.28) ||
+          part === 'fleck' ||
+          part === 'hair' ||
+          part === 'lash' ||
+          part === 'ear' ||
+          part === 'aura' ||
+          home.tipFactor > 0.28;
+        if (canJig) {
+          const jig = anim.jiggleAmp * (0.4 + home.tipFactor * 1.2) * (1 + jitteriness);
+          x += Math.sin(t * 3.1 + home.phase) * jig * appendBoost;
+          y += Math.cos(t * 2.7 + home.phase * 1.3) * jig * 0.7;
+        }
+
+        if (shiver > 0 && canJig) {
+          x += Math.sin(t * 48 + home.phase * 7) * shiver;
+          y += Math.cos(t * 52 + home.phase * 5) * shiver * 0.7;
+        }
       }
 
       y += this.bounceActive * (1 - Math.abs(home.x) * 0.3);
@@ -389,6 +394,14 @@ export class MonsterView extends ParticleContainer {
         y += oy;
       }
 
+      // Brow micro-bounce + lash flutter — must apply before sprite write
+      if (part === 'brow' && blink > 0) {
+        y -= blink * 0.012;
+      }
+      if (part === 'lash' && blink > 0.05) {
+        x += Math.sin(t * 40 + home.phase) * blink * 0.008;
+      }
+
       sprite.x = x * scale;
       sprite.y = -y * scale - home.z * scale * 0.03;
 
@@ -406,14 +419,6 @@ export class MonsterView extends ParticleContainer {
         } else {
           scaleYMul = Math.max(0.12, 1 - blink);
         }
-      }
-      // Brow micro-bounce on blink
-      if (part === 'brow' && blink > 0) {
-        y -= blink * 0.012;
-      }
-      // Lash flutter
-      if (part === 'lash' && blink > 0.05) {
-        x += Math.sin(t * 40 + home.phase) * blink * 0.008;
       }
 
       let alpha = 1;

@@ -1,4 +1,5 @@
 import { applyFeatures } from './features';
+import { enforceParticleBudget, PARTICLE_BUDGET, stripFloatingFaceParticles } from './face/quality';
 import { createBlobs } from './field';
 import { applyLimbs } from './limbs';
 import { generateMonsterName } from './names';
@@ -71,7 +72,10 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
   applyPatterns(rng, grid, palette);
   applyFeatures(rng, grid, palette, archetype);
 
-  const particles = gridToParticles(grid);
+  const particles = enforceParticleBudget(
+    stripFloatingFaceParticles(gridToParticles(grid)),
+    PARTICLE_BUDGET,
+  );
 
   const bounds = computeBounds(particles);
   const cx = (bounds.minX + bounds.maxX) * 0.5;
