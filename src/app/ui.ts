@@ -7,6 +7,18 @@ import {
 
 export type GalleryTab = 'all' | 'favorites' | 'dislikes';
 
+export type VoicePanelPreview = {
+  index: number;
+};
+
+export type VoicePanelState = {
+  visible: boolean;
+  loading: boolean;
+  previews: VoicePanelPreview[] | null;
+  selectedIndex: number | null;
+  playingIndex: number | null;
+};
+
 export type UiCallbacks = {
   onAddMore: () => void;
   onBack: () => void;
@@ -17,7 +29,16 @@ export type UiCallbacks = {
   onPrev: () => void;
   onNext: () => void;
   onTab: (tab: GalleryTab) => void;
+  onGenerateVoices: () => void;
+  onPlayVoice: (index: number) => void;
+  onSelectVoice: (index: number) => void;
 };
+
+const IDLE_BG = 'rgba(20,20,28,0.85)';
+const HOVER_BG = 'rgba(40,40,55,0.95)';
+const ACTIVE_BG = 'rgba(55,55,72,0.95)';
+const IDLE_BORDER = 'rgba(255,255,255,0.18)';
+const ACTIVE_BORDER = 'rgba(255,255,255,0.55)';
 
 /**
  * Lightweight HTML chrome over the Pixi canvas.
@@ -43,8 +64,8 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     btn.textContent = label;
     Object.assign(btn.style, {
       pointerEvents: 'auto',
-      border: '1px solid rgba(255,255,255,0.18)',
-      background: 'rgba(20,20,28,0.85)',
+      border: `1px solid ${IDLE_BORDER}`,
+      background: IDLE_BG,
       color: '#f2f2f7',
       padding: '8px 14px',
       borderRadius: '8px',
@@ -55,10 +76,15 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
       backdropFilter: 'blur(8px)',
     } as CSSStyleDeclaration);
     btn.addEventListener('mouseenter', () => {
-      btn.style.background = 'rgba(40,40,55,0.95)';
+      if (btn.disabled) return;
+      btn.style.background = HOVER_BG;
     });
     btn.addEventListener('mouseleave', () => {
-      btn.style.background = 'rgba(20,20,28,0.85)';
+      if (btn.dataset.lit === '1') {
+        btn.style.background = ACTIVE_BG;
+        return;
+      }
+      btn.style.background = IDLE_BG;
     });
     btn.addEventListener('click', onClick);
     return btn;
@@ -73,6 +99,8 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
   const dislikeBtn = makeBtn('👎', callbacks.onToggleDislike);
   const copyBtn = makeBtn('Копіювати лінк', callbacks.onCopyLink);
   const exportBtn = makeBtn('PNG', callbacks.onExportPng);
+  const voiceBtn = makeBtn('Голос', () => callbacks.onGenerateVoices());
+  voiceBtn.style.display = 'none';
 
   const seedLabel = document.createElement('span');
   Object.assign(seedLabel.style, {
@@ -93,6 +121,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     dislikeBtn,
     copyBtn,
     exportBtn,
+    voiceBtn,
     seedLabel,
   );
   root.appendChild(bar);
@@ -100,7 +129,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
   const nameLabel = document.createElement('div');
   Object.assign(nameLabel.style, {
     position: 'absolute',
-    bottom: '72px',
+    bottom: '52px',
     left: '50%',
     transform: 'translateX(-50%)',
     color: '#f2f2f7',
@@ -115,6 +144,47 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     display: 'none',
   } as CSSStyleDeclaration);
   root.appendChild(nameLabel);
+
+  const voiceStrip = document.createElement('div');
+  Object.assign(voiceStrip.style, {
+    position: 'absolute',
+    bottom: '96px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    display: 'none',
+    gap: '8px',
+    alignItems: 'center',
+    zIndex: '13',
+    pointerEvents: 'auto',
+  } as CSSStyleDeclaration);
+  root.appendChild(voiceStrip);
+
+  const chipWraps: HTMLDivElement[] = [];
+  const playBtns: HTMLButtonElement[] = [];
+  const selectBtns: HTMLButtonElement[] = [];
+
+  for (let i = 0; i < 3; i++) {
+    const wrap = document.createElement('div');
+    Object.assign(wrap.style, {
+      display: 'flex',
+      gap: '4px',
+      alignItems: 'center',
+    } as CSSStyleDeclaration);
+
+    const play = makeBtn(`▶ ${i + 1}`, () => callbacks.onPlayVoice(i));
+    play.style.padding = '7px 12px';
+    play.style.minWidth = '52px';
+
+    const select = makeBtn('○', () => callbacks.onSelectVoice(i));
+    select.style.padding = '7px 10px';
+    select.title = 'Обраний голос';
+
+    wrap.append(play, select);
+    voiceStrip.appendChild(wrap);
+    chipWraps.push(wrap);
+    playBtns.push(play);
+    selectBtns.push(select);
+  }
 
   const makeArrow = (label: string, side: 'left' | 'right', onClick: () => void) => {
     const btn = makeBtn(label, onClick);
@@ -151,7 +221,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
   const toast = document.createElement('div');
   Object.assign(toast.style, {
     position: 'absolute',
-    bottom: '24px',
+    bottom: '16px',
     left: '50%',
     transform: 'translateX(-50%)',
     background: 'rgba(20,20,28,0.92)',
@@ -173,7 +243,41 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => {
       toast.style.opacity = '0';
-    }, 1600);
+    }, 2200);
+  };
+
+  const paintLit = (btn: HTMLButtonElement, lit: boolean) => {
+    btn.dataset.lit = lit ? '1' : '';
+    btn.style.background = lit ? ACTIVE_BG : IDLE_BG;
+    btn.style.borderColor = lit ? ACTIVE_BORDER : IDLE_BORDER;
+  };
+
+  const setVoicePanel = (state: VoicePanelState) => {
+    voiceBtn.style.display = state.visible ? 'inline-block' : 'none';
+    voiceBtn.disabled = state.loading;
+    voiceBtn.style.opacity = state.loading ? '0.55' : '1';
+    voiceBtn.style.cursor = state.loading ? 'wait' : 'pointer';
+    voiceBtn.textContent = state.loading ? 'Генерую…' : 'Голос';
+
+    const showStrip = state.visible && (state.loading || (state.previews && state.previews.length > 0));
+    voiceStrip.style.display = showStrip ? 'flex' : 'none';
+
+    for (let i = 0; i < 3; i++) {
+      const wrap = chipWraps[i]!;
+      const play = playBtns[i]!;
+      const select = selectBtns[i]!;
+      const ready = !!state.previews && i < state.previews.length;
+      wrap.style.opacity = state.loading && !ready ? '0.4' : '1';
+      play.disabled = state.loading || !ready;
+      select.disabled = state.loading || !ready;
+      play.style.cursor = play.disabled ? 'wait' : 'pointer';
+      const playing = state.playingIndex === i;
+      play.textContent = playing ? `⏸ ${i + 1}` : `▶ ${i + 1}`;
+      paintLit(play, playing);
+      const chosen = state.selectedIndex === i;
+      select.textContent = chosen ? '✓' : '○';
+      paintLit(select, chosen);
+    }
   };
 
   const setLiked = (liked: boolean) => {
@@ -194,8 +298,8 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
 
   const setTab = (tab: GalleryTab) => {
     const active = (btn: HTMLButtonElement, on: boolean) => {
-      btn.style.borderColor = on ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.18)';
-      btn.style.background = on ? 'rgba(55,55,72,0.95)' : 'rgba(20,20,28,0.85)';
+      btn.style.borderColor = on ? ACTIVE_BORDER : IDLE_BORDER;
+      btn.style.background = on ? ACTIVE_BG : IDLE_BG;
     };
     active(tabAll, tab === 'all');
     active(tabFav, tab === 'favorites');
@@ -223,12 +327,23 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     dislikeBtn.style.display = isDetail ? 'inline-block' : 'none';
     copyBtn.style.display = isDetail ? 'inline-block' : 'none';
     exportBtn.style.display = isDetail ? 'inline-block' : 'none';
+    voiceBtn.style.display = isDetail ? 'inline-block' : 'none';
     prevBtn.style.display = isDetail ? 'block' : 'none';
     nextBtn.style.display = isDetail ? 'block' : 'none';
     nameLabel.style.display = isDetail ? 'block' : 'none';
     nameLabel.textContent = opts.name ?? '';
     emptyHint.style.display = !isDetail && opts.emptyHint ? 'block' : 'none';
     emptyHint.textContent = opts.emptyHint ?? '';
+
+    if (!isDetail) {
+      setVoicePanel({
+        visible: false,
+        loading: false,
+        previews: null,
+        selectedIndex: null,
+        playingIndex: null,
+      });
+    }
 
     if (isDetail) {
       seedLabel.textContent = opts.seed ? `seed: ${opts.seed}` : '';
@@ -250,6 +365,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     setCounts,
     setTab,
     showToast,
+    setVoicePanel,
     bar,
     nameLabel,
   };
