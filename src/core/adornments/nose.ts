@@ -2,24 +2,19 @@ import { BoxGeometry, CylinderGeometry, Group, Mesh, SphereGeometry, Vector3 } f
 import { orientPivot } from '../eyes/styles/shared';
 import { recessSkullPatch } from '../eyes/socket';
 import type { BulalashkaSkull } from '../mesh/bulalashkaSkull';
-import { anchorOnSurface, faceCenter } from '../mesh/bulalashkaSkull';
+import { anchorOnSurface } from '../mesh/bulalashkaSkull';
 import type { BulalashkaMaterials } from '../mesh/materials';
 import { lighten } from '../palette';
 import type { Rng } from '../rng';
-import type { MonsterPalette, NosePlan, NoseStyle } from '../types';
+import type { FaceLandmarks, MonsterPalette, NosePlan, NoseStyle } from '../types';
 
-export function generateNosePlan(
-  rng: Rng,
-  eyeY: number,
-  mouthY: number,
-): NosePlan {
-  const style = rng.pick<NoseStyle>(['nostril_slit', 'nostril_slit', 'stalk', 'patch_bump']);
-  const y = eyeY * 0.42 + mouthY * 0.58 + rng.float(-0.02, 0.02);
+export function generateNosePlan(rng: Rng, landmarks: FaceLandmarks): NosePlan {
+  const style = rng.pick<NoseStyle>(['nostril_slit', 'nostril_slit', 'nostril_slit', 'stalk', 'patch_bump', 'ridge']);
   return {
     style,
-    x: rng.float(-0.03, 0.03),
-    y,
-    size: rng.float(0.012, 0.028),
+    x: rng.float(-0.025, 0.025),
+    y: landmarks.noseY + rng.float(-0.015, 0.015),
+    size: rng.float(0.014, 0.03),
     tilt: rng.float(-0.35, 0.35),
   };
 }
@@ -30,14 +25,12 @@ export function buildNose(
   plan: NosePlan,
   palette: MonsterPalette,
   materials: BulalashkaMaterials,
-  eyeY: number,
-  mouthY: number,
+  landmarks: FaceLandmarks,
 ): Group {
   const root = new Group();
   root.name = 'nose';
-  const center = faceCenter(skull, eyeY, mouthY);
   const anchor = anchorOnSurface(skull, plan.x, plan.y) ?? {
-    point: center,
+    point: new Vector3(plan.x, landmarks.noseY, skull.bounds.maxZ * 0.88),
     normal: new Vector3(0, 0, 1),
   };
 
@@ -54,10 +47,10 @@ export function buildNose(
       const gap = plan.size * 0.55;
       for (const sx of [-gap, gap]) {
         const nostril = new Mesh(
-          new BoxGeometry(plan.size * 0.35, plan.size * 1.4, plan.size * 0.5),
+          new BoxGeometry(plan.size * 0.4, plan.size * 1.5, plan.size * 0.55),
           socketMat,
         );
-        nostril.position.set(sx, 0, plan.size * 0.15);
+        nostril.position.set(sx, 0, plan.size * 0.12);
         pivot.add(nostril);
       }
       break;
@@ -89,6 +82,9 @@ export function buildNose(
     }
     case 'ridge': {
       recessSkullPatch(skull, plan.x, plan.y, plan.size * 2, plan.size * 0.8, plan.size * 0.12);
+      const ridge = new Mesh(new BoxGeometry(plan.size * 1.8, plan.size * 0.5, plan.size * 0.35), skinMat);
+      ridge.position.z = plan.size * 0.2;
+      pivot.add(ridge);
       break;
     }
   }

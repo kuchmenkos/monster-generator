@@ -1,10 +1,10 @@
-import { CylinderGeometry, Group, Mesh, SphereGeometry } from 'three';
+import { BoxGeometry, CylinderGeometry, Group, Mesh, SphereGeometry } from 'three';
 import { orientPivot } from '../eyes/styles/shared';
 import type { BulalashkaSkull } from '../mesh/bulalashkaSkull';
 import { anchorOnSide, silhouetteWidthAtY } from '../mesh/bulalashkaSkull';
 import type { BulalashkaMaterials } from '../mesh/materials';
 import type { Rng } from '../rng';
-import type { EarPlan, EarStyle, MonsterPalette } from '../types';
+import type { EarPlan, EarStyle, FaceLandmarks, MonsterPalette } from '../types';
 
 function clipEarToSilhouette(skull: BulalashkaSkull, plan: EarPlan): number {
   const room = silhouetteWidthAtY(skull, plan.y);
@@ -15,9 +15,18 @@ function clipEarToSilhouette(skull: BulalashkaSkull, plan: EarPlan): number {
   return Math.min(1, over / Math.max(0.01, room));
 }
 
-export function layoutEars(rng: Rng, skull: BulalashkaSkull, eyeY: number): { ears: EarPlan[]; clip: number } {
-  const style = rng.pick<EarStyle>(['lobe', 'lobe', 'stub', 'stub']);
-  const baseY = eyeY * 0.55 + skull.bounds.minY * 0.25 + rng.float(0, 0.08);
+export function layoutEars(
+  rng: Rng,
+  skull: BulalashkaSkull,
+  landmarks: FaceLandmarks,
+): { ears: EarPlan[]; clip: number } {
+  const tight = silhouetteWidthAtY(skull, landmarks.eyeLineY) < 0.28;
+  const style = rng.pick<EarStyle>(
+    tight
+      ? ['stub', 'stub', 'bar', 'fin']
+      : ['lobe', 'lobe', 'stub', 'fin', 'bar'],
+  );
+  const baseY = landmarks.eyeLineY * 0.52 + landmarks.noseY * 0.48 + rng.float(-0.02, 0.04);
   const yNorm = (baseY - skull.bounds.minY) / Math.max(0.01, skull.bounds.maxY - skull.bounds.minY);
 
   const ears: EarPlan[] = [];
@@ -31,9 +40,9 @@ export function layoutEars(rng: Rng, skull: BulalashkaSkull, eyeY: number): { ea
       side,
       x: anchor.point.x,
       y: anchor.point.y,
-      length: rng.float(0.04, 0.09) * asym,
-      width: rng.float(0.025, 0.05) * asym,
-      tipAccent: rng.chance(0.45),
+      length: rng.float(0.035, 0.085) * asym,
+      width: rng.float(0.022, 0.048) * asym,
+      tipAccent: rng.chance(0.5),
     };
     totalClip += clipEarToSilhouette(skull, plan);
     ears.push(plan);
@@ -61,28 +70,44 @@ export function buildEars(
 
     const skinMat = materials.skin.clone();
 
-    if (plan.style === 'lobe') {
-      const lobe = new Mesh(
-        new SphereGeometry(plan.width, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.65),
-        skinMat,
-      );
-      lobe.scale.set(1, plan.length / Math.max(0.01, plan.width), 0.65);
-      lobe.position.set(0, 0, plan.width * 0.35);
-      pivot.add(lobe);
-    } else {
-      const stub = new Mesh(
-        new CylinderGeometry(plan.width * 0.5, plan.width * 0.7, plan.length, 6),
-        skinMat,
-      );
-      stub.rotation.x = Math.PI / 2;
-      stub.position.set(0, 0, plan.length * 0.45);
-      pivot.add(stub);
-      if (plan.tipAccent) {
-        const tipMat = materials.skin.clone();
-        tipMat.color.setHex(palette.buttHighlight);
-        const tip = new Mesh(new SphereGeometry(plan.width * 0.45, 6, 4), tipMat);
-        tip.position.set(0, 0, plan.length * 0.85);
-        pivot.add(tip);
+    switch (plan.style) {
+      case 'lobe': {
+        const lobe = new Mesh(
+          new SphereGeometry(plan.width, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.65),
+          skinMat,
+        );
+        lobe.scale.set(1, plan.length / Math.max(0.01, plan.width), 0.65);
+        lobe.position.set(0, 0, plan.width * 0.35);
+        pivot.add(lobe);
+        break;
+      }
+      case 'fin': {
+        const fin = new Mesh(new BoxGeometry(plan.width * 0.35, plan.length, plan.width * 0.15), skinMat);
+        fin.position.set(0, 0, plan.length * 0.35);
+        pivot.add(fin);
+        break;
+      }
+      case 'bar': {
+        const bar = new Mesh(new BoxGeometry(plan.width * 0.25, plan.length * 0.85, plan.width * 0.2), skinMat);
+        bar.position.set(0, 0, plan.length * 0.4);
+        pivot.add(bar);
+        break;
+      }
+      default: {
+        const stub = new Mesh(
+          new CylinderGeometry(plan.width * 0.5, plan.width * 0.7, plan.length, 6),
+          skinMat,
+        );
+        stub.rotation.x = Math.PI / 2;
+        stub.position.set(0, 0, plan.length * 0.45);
+        pivot.add(stub);
+        if (plan.tipAccent) {
+          const tipMat = materials.skin.clone();
+          tipMat.color.setHex(palette.buttHighlight);
+          const tip = new Mesh(new SphereGeometry(plan.width * 0.45, 6, 4), tipMat);
+          tip.position.set(0, 0, plan.length * 0.85);
+          pivot.add(tip);
+        }
       }
     }
 

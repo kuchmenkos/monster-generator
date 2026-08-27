@@ -1,5 +1,11 @@
 import type { MonsterData, Particle } from './types';
 
+const PEANUT_PINCH_MIN = 0.72;
+const FACE_PROMINENCE_MIN = 0.18;
+const FACE_PROMINENCE_MAX = 0.62;
+const EYE_OVERLAP_MAX = 0.32;
+const OPEN_MOUTH_DEPTH_MIN = 0.03;
+
 const ORTHO: ReadonlyArray<readonly [number, number]> = [
   [1, 0],
   [-1, 0],
@@ -175,6 +181,29 @@ export function scoreBulalashka(data: MonsterData): number {
   const hasEyes = (volEyes?.metrics.eyeCount ?? 0) > 0 || eyes.length > 0;
   if (!hasEyes) score -= 30;
   else score += 6;
+
+  // v6 face-quality gates
+  if (meshMetrics) {
+    if (meshMetrics.silhouettePinch > 0 && meshMetrics.silhouettePinch < PEANUT_PINCH_MIN) return -1000;
+    if (meshMetrics.faceProminence > 0 && meshMetrics.faceProminence < FACE_PROMINENCE_MIN) score -= 40;
+    else if (meshMetrics.faceProminence > FACE_PROMINENCE_MAX) score -= 18;
+    else if (meshMetrics.faceProminence >= 0.25 && meshMetrics.faceProminence <= 0.55) score += 8;
+
+    if (meshMetrics.eyeOverlap > EYE_OVERLAP_MAX) score -= 35;
+
+    const mouth = data.meshBundle?.mouth;
+    if (
+      mouth &&
+      (mouth.style === 'open-maw' || mouth.style === 'tongue-out') &&
+      meshMetrics.mouthCavityDepth < OPEN_MOUTH_DEPTH_MIN
+    ) {
+      score -= 25;
+    }
+
+    if (meshMetrics.mouthCavityDepth >= 0.04) score += 5;
+    if (meshMetrics.buttProtrusion > 0.15) score += 4;
+  }
+
   if (meshMetrics && meshMetrics.avgBulge > 0.08) score += 4;
   if (meshMetrics && meshMetrics.socketDepth > 0.02) score += 3;
   if (meshMetrics && meshMetrics.silhouetteClip > 0.15) score -= 8;

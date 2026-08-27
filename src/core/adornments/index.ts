@@ -9,6 +9,7 @@ import type { Rng } from '../rng';
 import type {
   Blob,
   BulalashkaSkullParams,
+  FaceLandmarks,
   HeadAdornmentBundle,
   MonsterPalette,
 } from '../types';
@@ -17,14 +18,13 @@ export function generateHeadAdornments(
   rng: Rng,
   blobs: Blob[],
   skullParams: BulalashkaSkullParams,
-  eyeY: number,
-  mouthY: number,
+  landmarks: FaceLandmarks,
 ): HeadAdornmentBundle {
   const tempSkull = buildBulalashkaSkull(blobs, skullParams);
-  const nose = generateNosePlan(rng, eyeY, mouthY);
-  const { ears, clip } = layoutEars(rng, tempSkull, eyeY);
+  const nose = generateNosePlan(rng, landmarks);
+  const { ears, clip } = layoutEars(rng, tempSkull, landmarks);
   const crown = generateCrownPlan(rng);
-  const sparkles = generateSparklePlan(rng, crown.sparkle);
+  const sparkles = generateSparklePlan(rng, crown);
   tempSkull.geometry.dispose();
 
   return {
@@ -47,21 +47,23 @@ export function buildHeadAdornments(
   bundle: HeadAdornmentBundle,
   palette: MonsterPalette,
   materials: BulalashkaMaterials,
-  eyeY: number,
-  mouthY: number,
+  landmarks: FaceLandmarks,
 ): AdornmentSceneResult {
   const group = new Group();
   group.name = 'adornments';
 
-  group.add(buildNose(skull, bundle.nose, palette, materials, eyeY, mouthY));
+  group.add(buildNose(skull, bundle.nose, palette, materials, landmarks));
   group.add(buildEars(skull, bundle.ears, palette, materials));
-  group.add(buildCrown(skull, bundle.crown, palette, materials));
+
+  const crownGroup = buildCrown(skull, bundle.crown, palette, materials);
+  group.add(crownGroup);
 
   const { group: sparkleGroup, meshes } = buildSparkles(
     skull,
     bundle.sparkles,
     palette,
     materials,
+    crownGroup,
   );
   group.add(sparkleGroup);
 

@@ -1,6 +1,11 @@
 import { Group, Mesh } from 'three';
 import { buildHeadAdornments } from '../adornments';
 import {
+  computeFaceProminence,
+  computeMouthCavityDepth,
+  computeSilhouettePinch,
+} from '../face/landmarks';
+import {
   buildBeadEye,
   buildBulbEye,
   buildClusterEye,
@@ -16,6 +21,7 @@ import { buildMeshButt } from './buttMesh';
 import { createBulalashkaMaterials, type BulalashkaMaterials } from './materials';
 import { applyMeshPatternsToSkull, countVertexColorSteps } from './meshPatterns';
 import type { Blob, MeshBundle, MonsterPalette } from '../types';
+import { createRng } from '../rng';
 
 export interface BulalashkaSceneResult {
   root: Group;
@@ -38,6 +44,7 @@ export function buildBulalashkaScene(
   options: BuildSceneOptions = {},
 ): BulalashkaSceneResult {
   const ve = bundle.volumetricEyes;
+  const landmarks = bundle.landmarks;
   const skull = buildBulalashkaSkull(blobs, ve.skullParams, { subdivisions: options.subdivisions });
   const materials = createBulalashkaMaterials(palette);
   const root = new Group();
@@ -65,19 +72,25 @@ export function buildBulalashkaScene(
     bundle.adornments,
     palette,
     materials,
-    ve.params.eyeY,
-    bundle.mouth.midY,
+    landmarks,
   );
   root.add(adornmentGroup);
 
-  const { group: buttGroup, protrusion } = buildMeshButt(skull, buttArchetype, palette, materials);
+  const buttRng = createRng(`${bundle.variantSeed}:butt`);
+  const { group: buttGroup, protrusion } = buildMeshButt(
+    skull,
+    buttArchetype,
+    palette,
+    materials,
+    buttRng,
+  );
   root.add(buttGroup);
 
-  const { plans, silhouetteClip } = solveEyeLayout(
+  const { plans, silhouetteClip, eyeOverlap } = solveEyeLayout(
     ve.params,
     ve.plans.map((p) => ({ ...p })),
     skull,
-    ve.mouthFloorY,
+    landmarks.mouthFloorY,
   );
 
   const eyelids: Mesh[] = [];
@@ -97,12 +110,14 @@ export function buildBulalashkaScene(
   };
 
   const style = ve.params.eyeStyle;
+  const socketMul = style === 'hole' || style === 'pit' ? 0.45 : 0.38;
+
   if (style === 'cluster') {
     const cx = plans.reduce((s, p) => s + p.x, 0) / plans.length;
     const cy = plans.reduce((s, p) => s + p.y, 0) / plans.length;
-    const maxR = Math.max(...plans.map((p) => p.rx)) * 1.45;
-    recessSkullPatch(skull, cx, cy, maxR, maxR * 0.85, ve.params.eyeSize * 0.35);
-    const sock = carveSocketPatch(skull, cx, cy, maxR, maxR * 0.85, ve.params.eyeSize * 0.28, 3, materials);
+    const maxR = Math.max(...plans.map((p) => p.rx)) * 1.5;
+    recessSkullPatch(skull, cx, cy, maxR, maxR * 0.9, ve.params.eyeSize * 0.42);
+    const sock = carveSocketPatch(skull, cx, cy, maxR, maxR * 0.9, ve.params.eyeSize * socketMul, 3, materials);
     root.add(sock.mesh);
     socketDepthSum += sock.depth;
     socketCount++;
@@ -111,14 +126,14 @@ export function buildBulalashkaScene(
     bulgeSum = plans.reduce((s, p) => s + p.bulge, 0);
   } else {
     for (const plan of plans) {
-      recessSkullPatch(skull, plan.x, plan.y, plan.rx * 1.45, plan.ry * 1.35, plan.size * 0.32);
+      recessSkullPatch(skull, plan.x, plan.y, plan.rx * 1.5, plan.ry * 1.4, plan.size * 0.4);
       const sock = carveSocketPatch(
         skull,
         plan.x,
         plan.y,
-        plan.rx * 1.45,
-        plan.ry * 1.35,
-        plan.size * 0.3,
+        plan.rx * 1.5,
+        plan.ry * 1.4,
+        plan.size * socketMul,
         3,
         materials,
       );
@@ -151,6 +166,10 @@ export function buildBulalashkaScene(
     }
   }
 
+  const mouthCavityDepth = computeMouthCavityDepth(bundle.mouth);
+  const faceProminence = computeFaceProminence(landmarks, plans, bundle.mouth);
+  const silhouettePinch = computeSilhouettePinch(skull);
+
   bundle.metrics = {
     eyeCount: plans.length,
     avgBulge: plans.length ? bulgeSum / plans.length : 0,
@@ -165,6 +184,10 @@ export function buildBulalashkaScene(
     crownCount: bundle.adornments.crown.count,
     earSilhouetteClip: bundle.adornments.earSilhouetteClip,
     sparkleCount: bundle.adornments.sparkles.count,
+    silhouettePinch,
+    faceProminence,
+    mouthCavityDepth,
+    eyeOverlap,
   };
 
   ve.metrics = {

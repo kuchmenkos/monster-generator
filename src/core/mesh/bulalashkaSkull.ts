@@ -18,7 +18,7 @@ export interface SkullBuildOptions {
 }
 
 /** Sample merged blob SDF-ish field — higher = inside body. */
-function blobField(blobs: Blob[], x: number, y: number, z: number): number {
+export function blobField(blobs: Blob[], x: number, y: number, z: number): number {
   let sum = 0;
   for (const b of blobs) {
     const dx = (x - b.x) / Math.max(0.08, b.rx);
@@ -54,7 +54,29 @@ function deformBulalashka(
     const lump =
       Math.sin(dir.x * 7.3 + dir.y * 5.1) * Math.cos(dir.z * 6.7 + dir.y * 4.2);
     const lump2 = Math.sin(dir.x * 13.7 - dir.z * 9.2) * 0.5;
-    r *= 1 + params.lumpiness * (lump * 0.1 + lump2 * 0.06);
+    r *= 1 + params.lumpiness * (lump * 0.06 + lump2 * 0.035);
+
+    // Anti-peanut — minimum girth at waist
+    if (Math.abs(dir.y) < 0.18 && Math.abs(dir.z) < 0.55) {
+      r = Math.max(r, 0.36 + params.jawDrop * 0.04);
+    }
+
+    switch (params.profile) {
+      case 'bighead':
+        if (dir.y > 0.05) r *= 1 + dir.y * 0.22;
+        else if (dir.y < -0.1) r *= 1 - Math.abs(dir.y) * 0.12;
+        break;
+      case 'pear':
+        if (dir.y < 0) r *= 1 + Math.abs(dir.y) * 0.14;
+        break;
+      case 'teardrop':
+        if (dir.y > 0.1) r *= 1 - dir.y * 0.1;
+        if (dir.y < -0.05) r *= 1 + Math.abs(dir.y) * 0.12;
+        break;
+      case 'dumpling':
+        r *= 1 + (0.5 - Math.abs(dir.y)) * 0.06;
+        break;
+    }
 
     // Pear rear — narrow -Z, wide lower sides
     if (dir.z < 0) {

@@ -1,10 +1,16 @@
 import type { MeshPatternKind } from './meshPatterns';
 import { generateHeadAdornments } from '../adornments';
+import {
+  computeFaceLandmarks,
+  computeFaceProminence,
+  computeMouthCavityDepth,
+  computeSilhouettePinch,
+} from '../face/landmarks';
 import { generateSkullParams, generateEyeParams, layoutEyes, solveEyeLayout } from '../eyes/index';
 import { buildBulalashkaSkull } from './bulalashkaSkull';
 import { generateMouthBundle } from '../mouth';
 import type { Rng } from '../rng';
-import type { Blob, MeshBundle, MeshBundleMetrics } from '../types';
+import type { Blob, BulalashkaBodyArchetype, ButtArchetype, MeshBundle, MeshBundleMetrics } from '../types';
 
 function pickPatternKind(rng: Rng): MeshPatternKind {
   return rng.pick<MeshPatternKind>([
@@ -17,6 +23,9 @@ function pickPatternKind(rng: Rng): MeshPatternKind {
     'gradient',
     'rosettes',
     'bio-glow',
+    'scales',
+    'curved_stripes',
+    'mask',
   ]);
 }
 
@@ -24,29 +33,43 @@ function pickPatternKind(rng: Rng): MeshPatternKind {
 export function buildMeshBundle(
   rng: Rng,
   blobs: Blob[],
-  bodyArchetype: string,
-  _buttArchetype: import('../types').ButtArchetype,
+  bodyArchetype: BulalashkaBodyArchetype | string,
+  _buttArchetype: ButtArchetype,
   _variantSeed: string,
   mouthFloorY: number,
 ): MeshBundle {
   const variantSeed = _variantSeed;
-  const skullParams = generateSkullParams(rng);
-  const eyeParams = generateEyeParams(rng, bodyArchetype);
-  const plans = layoutEyes(eyeParams, rng);
-  const tempSkull = buildBulalashkaSkull(blobs, skullParams);
-  const { plans: solved, silhouetteClip } = solveEyeLayout(eyeParams, plans, tempSkull, mouthFloorY);
-  tempSkull.geometry.dispose();
+  const archetype = bodyArchetype as BulalashkaBodyArchetype;
+  const skullParams = generateSkullParams(rng, archetype);
 
-  const mouth = generateMouthBundle(rng, mouthFloorY, eyeParams.eyeY);
+  const tempSkull = buildBulalashkaSkull(blobs, skullParams);
+  const landmarks = computeFaceLandmarks(tempSkull, archetype, mouthFloorY);
+  const silhouettePinch = computeSilhouettePinch(tempSkull);
+
+  const eyeParams = generateEyeParams(rng, archetype, landmarks);
+  const plans = layoutEyes(eyeParams, rng);
+  const { plans: solved, silhouetteClip, eyeOverlap } = solveEyeLayout(
+    eyeParams,
+    plans,
+    tempSkull,
+    landmarks.mouthFloorY,
+  );
+
+  const mouth = generateMouthBundle(rng, landmarks);
   const patternKind = pickPatternKind(rng);
-  const adornments = generateHeadAdornments(rng, blobs, skullParams, eyeParams.eyeY, mouth.midY);
+  const adornments = generateHeadAdornments(rng, blobs, skullParams, landmarks);
+
+  const faceProminence = computeFaceProminence(landmarks, solved, mouth);
+  const mouthCavityDepth = computeMouthCavityDepth(mouth);
+
+  tempSkull.geometry.dispose();
 
   const metrics: MeshBundleMetrics = {
     eyeCount: solved.length,
     avgBulge: solved.reduce((s, p) => s + p.bulge, 0) / Math.max(1, solved.length),
-    socketDepth: eyeParams.eyeSize * 0.28,
+    socketDepth: eyeParams.eyeSize * 0.4,
     silhouetteClip,
-    mouthCavity: mouth.hasCavity,
+    mouthCavity: mouth.hasCavity || mouth.openUp + mouth.openDown > 0.02,
     buttProtrusion: 0.12,
     vertexColorSteps: 0,
     patternKind,
@@ -55,6 +78,10 @@ export function buildMeshBundle(
     crownCount: adornments.crown.count,
     earSilhouetteClip: adornments.earSilhouetteClip,
     sparkleCount: adornments.sparkles.count,
+    silhouettePinch,
+    faceProminence,
+    mouthCavityDepth,
+    eyeOverlap,
   };
 
   const volumetricEyes = {
@@ -67,7 +94,7 @@ export function buildMeshBundle(
       socketDepth: metrics.socketDepth,
       silhouetteClip,
     },
-    mouthFloorY,
+    mouthFloorY: landmarks.mouthFloorY,
     variantSeed,
   };
 
@@ -75,6 +102,7 @@ export function buildMeshBundle(
     volumetricEyes,
     mouth,
     adornments,
+    landmarks,
     patternKind,
     metrics,
     variantSeed,

@@ -11,7 +11,10 @@ export type MeshPatternKind =
   | 'stripes'
   | 'gradient'
   | 'rosettes'
-  | 'bio-glow';
+  | 'bio-glow'
+  | 'scales'
+  | 'curved_stripes'
+  | 'mask';
 
 const LX = -0.4;
 const LY = 0.6;
@@ -33,6 +36,9 @@ function pickPattern(rng: Rng): MeshPatternKind {
     'gradient',
     'rosettes',
     'bio-glow',
+    'scales',
+    'curved_stripes',
+    'mask',
   ]);
 }
 
@@ -164,6 +170,40 @@ function applyMeshPatternsInternal(
           r = a2r;
           g = a2g;
           bl = ab;
+        }
+        break;
+      case 'scales': {
+        const period = 0.14;
+        const shift = Math.floor(v / period) % 2 === 0 ? 0 : period * 0.5;
+        const lx = ((u + shift) % period) / period;
+        const ly = (v % period) / period;
+        if (lx < 0.12 || ly < 0.12) {
+          const [dr, dg, db] = rgbToUnit(darken(palette.base, 0.18));
+          r = dr;
+          g = dg;
+          bl = db;
+        } else if (lx > 0.55 && ly > 0.55) {
+          r = hr;
+          g = hg;
+          bl = hb;
+        }
+        break;
+      }
+      case 'curved_stripes': {
+        const bent = v + Math.sin(u * Math.PI) * 0.08;
+        if (Math.floor(bent * 14) % 2 === 0) {
+          r = ar;
+          g = ag;
+          bl = ab;
+        }
+        break;
+      }
+      case 'mask':
+        if (py > midY - halfH * 0.15 && py < midY + halfH * 0.35 && Math.abs(px) < halfW * 0.55 && nz > 0.15) {
+          const [lr, lg, lb] = rgbToUnit(lighten(palette.base, 0.14));
+          r = lr;
+          g = lg;
+          bl = lb;
         }
         break;
       default:

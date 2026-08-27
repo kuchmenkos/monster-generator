@@ -11,6 +11,8 @@ import type { BulalashkaMaterials } from '../../mesh/materials';
 import type { BulalashkaEyeParams, EyePlan, PupilShape } from '../../types';
 
 const FWD = new Vector3(0, 0, 1);
+const WP = new Vector3();
+
 /** Port xb() — orient pivot so +Z aligns with surface normal. */
 export function orientPivot(pivot: Object3D, anchor: SurfaceAnchor): void {
   pivot.position.copy(anchor.point);
@@ -46,20 +48,45 @@ export function buildPupil(
   return mesh;
 }
 
-/** Port Bx() — upper eyelid as partial sphere with skin material. */
+/** Upper + lower partial spheres for blink animation. */
+export function buildEyelids(
+  eyeLid: number,
+  size: number,
+  materials: BulalashkaMaterials,
+): Mesh[] {
+  if (eyeLid <= 0.02) return [];
+  const lids: Mesh[] = [];
+
+  const upperGeo = new SphereGeometry(size * 1.1, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42);
+  const upper = new Mesh(upperGeo, materials.skin);
+  upper.name = 'eyelid';
+  upper.rotation.x = -Math.PI * 0.14 * eyeLid;
+  upper.position.z = size * 0.12;
+  upper.userData.blinkWeight = eyeLid;
+  upper.userData.lidRole = 'upper';
+  lids.push(upper);
+
+  const lowerGeo = new SphereGeometry(size * 1.05, 10, 6, 0, Math.PI * 2, Math.PI * 0.58, Math.PI * 0.35);
+  const lower = new Mesh(lowerGeo, materials.skin);
+  lower.name = 'eyelid';
+  lower.rotation.x = Math.PI * 0.08 * eyeLid;
+  lower.position.z = size * 0.08;
+  lower.position.y = -size * 0.15;
+  lower.userData.blinkWeight = eyeLid * 0.65;
+  lower.userData.lidRole = 'lower';
+  lids.push(lower);
+
+  return lids;
+}
+
+/** Legacy single upper lid helper. */
 export function buildEyelid(
   eyeLid: number,
   size: number,
   materials: BulalashkaMaterials,
 ): Mesh | null {
-  if (eyeLid <= 0.02) return null;
-  const geo = new SphereGeometry(size * 1.08, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.42);
-  const lid = new Mesh(geo, materials.skin);
-  lid.name = 'eyelid';
-  lid.rotation.x = -Math.PI * 0.12 * eyeLid;
-  lid.position.z = size * 0.15;
-  lid.userData.blinkWeight = eyeLid;
-  return lid;
+  const lids = buildEyelids(eyeLid, size, materials);
+  return lids[0] ?? null;
 }
 
 function addScleraOutline(sclera: Mesh, materials: BulalashkaMaterials): void {
@@ -69,18 +96,25 @@ function addScleraOutline(sclera: Mesh, materials: BulalashkaMaterials): void {
   sclera.add(hull);
 }
 
-function antiPopPush(group: Group, anchor: SurfaceAnchor, size: number, skull: BulalashkaSkull): void {
-  const maxZ = skull.bounds.maxZ + size * 0.15;
+/** Shrink bulge when protruding past silhouette instead of hard push. */
+function antiPopPush(
+  group: Group,
+  anchor: SurfaceAnchor,
+  size: number,
+  skull: BulalashkaSkull,
+  bulgeRef?: { value: number },
+): void {
+  const maxZ = skull.bounds.maxZ + size * 0.08;
   group.updateMatrixWorld(true);
-  const wp = new Vector3();
-  group.getWorldPosition(wp);
-  if (wp.z > maxZ) {
-    const push = wp.z - maxZ;
-    group.position.addScaledVector(anchor.normal, -push);
+  group.getWorldPosition(WP);
+  if (WP.z > maxZ) {
+    const over = (WP.z - maxZ) / Math.max(0.01, size);
+    if (bulgeRef) bulgeRef.value *= Math.max(0.35, 1 - over * 0.6);
+    group.position.addScaledVector(anchor.normal, -(WP.z - maxZ) * 0.45);
   }
 }
 
-/** Default ball style — single sclera sphere + pupil + lid. */
+/** Default ball style — single sclera sphere + pupil + lids. */
 export function buildBallEye(
   plan: EyePlan,
   anchor: SurfaceAnchor,
@@ -92,20 +126,22 @@ export function buildBallEye(
   group.name = 'eye-ball';
   orientPivot(group, anchor);
 
-  const bulge = computeBulge(params, anchor, plan.size);
+  const bulgeRef = { value: computeBulge(params, anchor, plan.size) };
   const sclera = new Mesh(new SphereGeometry(plan.size, 14, 12), materials.eye);
   sclera.name = 'sclera';
-  sclera.position.z = bulge;
+  sclera.position.z = bulgeRef.value;
   addScleraOutline(sclera, materials);
 
   const pupil = buildPupil(params.pupilShape, plan.pupilSize, materials);
   sclera.add(pupil);
 
-  const lid = buildEyelid(params.eyeLid, plan.size, materials);
-  if (lid) sclera.add(lid);
+  for (const lid of buildEyelids(params.eyeLid, plan.size, materials)) {
+    sclera.add(lid);
+  }
 
   group.add(sclera);
-  antiPopPush(group, anchor, plan.size, skull);
+  antiPopPush(group, anchor, plan.size, skull, bulgeRef);
+  sclera.position.z = bulgeRef.value;
   return group;
 }
 
@@ -130,7 +166,7 @@ export function buildClusterEye(
       point: anchor.point.clone().add(local),
       normal: anchor.normal.clone(),
     };
-    const bulge = computeBulge(params, subAnchor, plan.size) * (0.85 + plan.bulge * 0.2);
+    const bulge = computeBulge(params, subAnchor, plan.size) * (0.8 + plan.bulge * 0.15);
     const mini = new Mesh(new SphereGeometry(plan.size, 10, 8), materials.eye);
     mini.position.copy(local);
     mini.position.z = bulge;
@@ -139,8 +175,9 @@ export function buildClusterEye(
     group.add(mini);
   }
 
-  const lid = buildEyelid(params.eyeLid, plans[0]?.size ?? params.eyeSize, materials);
-  if (lid) group.add(lid);
+  for (const lid of buildEyelids(params.eyeLid, plans[0]?.size ?? params.eyeSize, materials)) {
+    group.add(lid);
+  }
 
   antiPopPush(group, anchor, params.eyeSize, skull);
   return group;
@@ -158,13 +195,23 @@ export function buildHoleEye(
   group.name = 'eye-hole';
   orientPivot(group, anchor);
 
-  const tiny = plan.size * 0.35;
-  const bulge = computeBulge(params, anchor, tiny) * 0.35;
+  const pitMat = materials.socket.clone();
+  const pit = new Mesh(new SphereGeometry(plan.size * 0.85, 10, 8), pitMat);
+  pit.position.z = -plan.size * 0.15;
+  pit.scale.set(1, 1, 0.55);
+  group.add(pit);
+
+  const tiny = plan.size * 0.32;
+  const bulgeRef = { value: computeBulge(params, anchor, tiny) * 0.25 };
   const sclera = new Mesh(new SphereGeometry(tiny, 10, 8), materials.eye);
-  sclera.position.z = bulge;
+  sclera.position.z = bulgeRef.value;
   sclera.add(buildPupil(params.pupilShape, tiny * 0.55, materials));
   group.add(sclera);
 
-  antiPopPush(group, anchor, tiny, skull);
+  for (const lid of buildEyelids(params.eyeLid, plan.size, materials)) {
+    group.add(lid);
+  }
+
+  antiPopPush(group, anchor, plan.size, skull, bulgeRef);
   return group;
 }

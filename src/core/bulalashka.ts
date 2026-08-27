@@ -145,11 +145,13 @@ export function createProceduralBulalashka(rng: Rng): BulalashkaBlobSet {
     const n2 = spineNoise(t, 2);
     const n3 = spineNoise(t, 3);
 
-    const x = frontAnchor.x * (1 - t) + backAnchor.x * t + n1 * amp * 0.55;
-    const y = frontAnchor.y * (1 - t) + backAnchor.y * t + n2 * amp * 0.45;
-    const z = frontAnchor.z * (1 - t) + backAnchor.z * t + n3 * amp * 0.5;
+    const x = frontAnchor.x * (1 - t) + backAnchor.x * t + n1 * amp * 0.35;
+    const y = frontAnchor.y * (1 - t) + backAnchor.y * t + n2 * amp * 0.38;
+    const z = frontAnchor.z * (1 - t) + backAnchor.z * t + n3 * amp * 0.42;
 
-    const rScale = 1 + n1 * 0.4 + n2 * 0.3;
+    // Anti-peanut: minimum radius at waist (t≈0.5), no pinch below dominant lobe
+    const waistFloor = 0.78 + Math.abs(t - 0.5) * 0.55;
+    const rScale = Math.max(waistFloor, 1 + n1 * 0.28 + n2 * 0.22);
     const rx = baseR * rScale * rng.float(0.85, 1.15);
     const ry = baseR * rScale * rng.float(0.82, 1.12);
     const rz = baseR * rScale * rng.float(0.78, 1.08);
@@ -190,7 +192,7 @@ export function createProceduralBulalashka(rng: Rng): BulalashkaBlobSet {
     );
   }
 
-  const wobbleCount = rng.int(1, 2);
+  const wobbleCount = rng.int(0, 1);
   for (let w = 0; w < wobbleCount; w++) {
     const side = rng.chance(0.5) ? -1 : 1;
     blobs.push(

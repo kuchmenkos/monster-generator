@@ -192,11 +192,14 @@ export interface EyePlan {
   pupilSize: number;
 }
 
+export type SkullProfile = 'bighead' | 'pear' | 'teardrop' | 'dumpling';
+
 export interface BulalashkaSkullParams {
   boxiness: number;
   lumpiness: number;
   jawDrop: number;
   scale: number;
+  profile: SkullProfile;
 }
 
 export interface BulalashkaEyeParams {
@@ -251,6 +254,21 @@ export interface MeshBundleMetrics {
   crownCount: number;
   earSilhouetteClip: number;
   sparkleCount: number;
+  silhouettePinch: number;
+  faceProminence: number;
+  mouthCavityDepth: number;
+  eyeOverlap: number;
+}
+
+/** Stable face-zone anchors for mesh features. */
+export interface FaceLandmarks {
+  eyeLineY: number;
+  noseY: number;
+  mouthMidY: number;
+  mouthFloorY: number;
+  crownY: number;
+  faceHeight: number;
+  faceTopY: number;
 }
 
 export type NoseStyle = 'nostril_slit' | 'stalk' | 'patch_bump' | 'ridge';
@@ -302,6 +320,7 @@ export interface MeshBundle {
   volumetricEyes: VolumetricEyeBundle;
   mouth: MouthBundle;
   adornments: HeadAdornmentBundle;
+  landmarks: FaceLandmarks;
   patternKind: string;
   metrics: MeshBundleMetrics;
   variantSeed: string;
