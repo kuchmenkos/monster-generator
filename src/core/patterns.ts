@@ -102,10 +102,25 @@ function applyBelly(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void 
 function applySpots(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
   const body = bodyCells(grid);
   if (body.length === 0) return;
-  const count = rng.int(4, 10);
+  // Prefer interior (4 body neighbors) so stamps don't glitter on rim
+  const interior = body.filter((c) => {
+    let n = 0;
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
+      if (nb?.part === 'body') n++;
+    }
+    return n >= 4;
+  });
+  const pool = interior.length >= 4 ? interior : body;
+  const count = rng.int(2, 5);
   for (let i = 0; i < count; i++) {
-    const center = body[rng.int(0, body.length - 1)]!;
-    const radius = rng.int(1, 3);
+    const center = pool[rng.int(0, pool.length - 1)]!;
+    const radius = rng.int(1, 2);
     const tint = rng.chance(0.45) ? palette.accent : rng.chance(0.5) ? palette.accent2 : darken(center.color, 0.22);
     for (const c of body) {
       const d = Math.hypot(c.col - center.col, c.row - center.row);
@@ -239,10 +254,24 @@ function applyBioGlow(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): voi
 function applyPatches(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
   const body = bodyCells(grid);
   if (body.length === 0) return;
-  const patches = rng.int(2, 5);
+  const interior = body.filter((c) => {
+    let n = 0;
+    for (const [dc, dr] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
+      if (nb?.part === 'body') n++;
+    }
+    return n >= 4;
+  });
+  const pool = interior.length >= 4 ? interior : body;
+  const patches = rng.int(1, 3);
   for (let p = 0; p < patches; p++) {
-    const seed = body[rng.int(0, body.length - 1)]!;
-    const r = rng.float(2.5, 5.5);
+    const seed = pool[rng.int(0, pool.length - 1)]!;
+    const r = rng.float(2, 4);
     const tint = rng.chance(0.5) ? palette.accent2 : darken(palette.base, 0.14);
     for (const c of body) {
       if (Math.hypot(c.col - seed.col, c.row - seed.row) <= r) c.color = tint;
@@ -313,9 +342,9 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
   const kind = rng.pick<PatternKind>([
     'plain',
     'plain',
+    'plain',
     'belly',
     'belly',
-    'spots',
     'spots',
     'stripes',
     'gradient',
@@ -323,13 +352,13 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
     'scales',
     'stripes-curved',
     'mask',
-    'bio-glow',
     'dual-gradient',
+    'mottled',
+    'two_tone',
+    // rarer stamp-like coats
     'patches',
     'speckle',
     'zigzag_coat',
-    'two_tone',
-    'mottled',
     'rim_glow',
   ]);
 

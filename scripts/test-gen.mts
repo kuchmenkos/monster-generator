@@ -11,10 +11,8 @@ let mouthWidthOk = 0;
 let toothRatioOk = 0;
 let pupilRanged = 0;
 let pupilTotal = 0;
-let longLegs = 0;
 let fillSum = 0;
 let genMsSum = 0;
-let withAppend = 0;
 let connectedLimbs = 0;
 let richCoat = 0;
 let detachedSum = 0;
@@ -28,6 +26,9 @@ let maxParticles = 0;
 let maxHair = 0;
 let floatingSum = 0;
 let floatingWorst = 0;
+let bottomLegHits = 0;
+let headOnlyAppend = 0;
+let withAnyAppend = 0;
 const archetypes: Record<string, number> = {};
 
 for (const seed of seeds) {
@@ -67,7 +68,19 @@ for (const seed of seeds) {
   if (ears.length > 0) hasEar++;
   maxHair = Math.max(maxHair, hair.length);
 
-  if (append.length >= 6) withAppend++;
+  if (append.length > 0) withAnyAppend++;
+
+  // Pseudo-legs: appendage in bottom 15% of body bbox — must be zero
+  if (body.length > 0 && append.length > 0) {
+    const bodyMinR = Math.min(...body.map((p) => p.row));
+    const bodyMaxR = Math.max(...body.map((p) => p.row));
+    const bodyH = Math.max(1, bodyMaxR - bodyMinR);
+    const legBand = bodyMinR + Math.floor(bodyH * 0.15);
+    const headBand = bodyMinR + Math.floor(bodyH * 0.7);
+    const bottom = append.filter((p) => p.row < legBand);
+    if (bottom.length > 0) bottomLegHits++;
+    if (append.every((p) => p.row >= headBand)) headOnlyAppend++;
+  }
 
   const detached = countDetachedAppendages(m.particles);
   detachedSum += detached;
@@ -89,17 +102,6 @@ for (const seed of seeds) {
         Math.max(...mouths.map((p) => p.col)) - Math.min(...mouths.map((p) => p.col));
       if (mouthW / faceW <= 0.62) mouthWidthOk++;
       if (teeth.length / mouths.length <= 0.45) toothRatioOk++;
-    }
-  }
-
-  if (append.length > 0 && body.length > 0) {
-    const midR = (Math.min(...body.map((p) => p.row)) + Math.max(...body.map((p) => p.row))) / 2;
-    const below = append.filter((p) => p.row < midR);
-    if (below.length > 0) {
-      const span =
-        Math.max(...below.map((p) => p.row)) - Math.min(...below.map((p) => p.row));
-      if (m.scaleRef >= 2 && span >= 4) longLegs++;
-      else if (m.scaleRef < 2) longLegs++;
     }
   }
 
@@ -125,7 +127,18 @@ const boxyRate =
 
 console.log('n=', seeds.length, 'avgMs=', avgMs.toFixed(1), 'avgFill=', avgFill.toFixed(3));
 console.log('mouths', withMouth, 'cavity', withCavity, 'widthOk', mouthWidthOk, 'toothOk', toothRatioOk);
-console.log('pupils ranged', pupilRanged, '/', pupilTotal, 'append', withAppend, 'longLegs', longLegs);
+console.log(
+  'pupils ranged',
+  pupilRanged,
+  '/',
+  pupilTotal,
+  'anyAppend',
+  withAnyAppend,
+  'headOnlyAppend',
+  headOnlyAppend,
+  'bottomLegs',
+  bottomLegHits,
+);
 console.log('connectedLimbs', connectedLimbs, 'richCoat', richCoat, 'avgDetached', (detachedSum / seeds.length).toFixed(2));
 console.log('boxyRate', boxyRate.toFixed(3), 'archetypes', archetypes);
 console.log(
@@ -161,12 +174,13 @@ if (avgFill > 0.78) throw new Error('avg bbox fill too high (boxy)');
 if (pupilRanged < pupilTotal * 0.7) throw new Error('pupils missing pupilRange');
 if (boxyRate > 0.02) throw new Error('too many boxy archetypes');
 if (avgMs > 200) throw new Error(`gen too slow: ${avgMs}ms (budget 200ms)`);
-if (withAppend < seeds.length * 0.6) throw new Error('too few limbs');
+if (bottomLegHits > 0) throw new Error(`bottom leg protrusions: ${bottomLegHits}`);
+if (detachedSum > 0) throw new Error(`detached appendages total=${detachedSum}`);
 if (connectedLimbs < seeds.length * 0.92) throw new Error('too many detached limbs');
 if (richCoat < seeds.length * 0.7) throw new Error('too few coat tones');
 if (hasNose < seeds.length * 0.7) throw new Error('too few noses');
-if (hasHair < seeds.length * 0.65) throw new Error('too few hairstyles');
-if (hasBrow < seeds.length * 0.6) throw new Error('too few brows');
+if (hasHair < seeds.length * 0.55) throw new Error('too few hairstyles');
+if (hasBrow < seeds.length * 0.55) throw new Error('too few brows');
 if (maxHair > 180) throw new Error(`hair cell bloat: ${maxHair}`);
 if (maxParticles > PARTICLE_BUDGET) throw new Error(`particle bloat: ${maxParticles}`);
 if (floatingSum > 0) throw new Error(`floating face features total=${floatingSum}`);

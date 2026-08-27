@@ -55,18 +55,27 @@ export function paintMouthFromCurve(
   base: GridCell,
   faceH: number,
   lowestEyeRow: number,
+  forced?: {
+    style?: MouthStyle;
+    toothStyle?: ToothStyle;
+    minHalfW?: number;
+  },
 ): void {
   const sr = grid.scaleRef;
-  const style = rng.pick<MouthStyle>([
-    'closed-line',
-    'closed-line',
-    'zigzag',
-    'open-maw',
-    'open-maw',
-    'open-maw',
-    'tongue-out',
-    'tiny',
-  ]);
+  // Avoid flat closed-line as default — readability first
+  let style =
+    forced?.style ??
+    rng.pick<MouthStyle>([
+      'open-maw',
+      'open-maw',
+      'open-maw',
+      'tongue-out',
+      'zigzag',
+      'tiny',
+      'closed-line',
+    ]);
+  // Flat 1-line mouths read as defects — promote to open-maw
+  if (style === 'closed-line' && rng.chance(0.85)) style = 'open-maw';
 
   const mouthColor = darken(palette.mouth, 0.2);
   const cavityColor = darken(palette.mouth, 0.45);
@@ -74,15 +83,17 @@ export function paintMouthFromCurve(
   const curve = rng.pick<LipCurveKind>(['smile', 'scowl', 'wave', 'skew', 'flat']);
   const amp = rng.float(0.8, 2.4) * Math.max(1, sr * 0.5);
   const skew = rng.float(-1.2, 1.2);
-  const toothStyle = rng.pick<ToothStyle>([
-    'row_even',
-    'fang_pair',
-    'buck',
-    'shark',
-    'gap_grin',
-    'stump',
-    'gold_cap',
-  ]);
+  const toothStyle =
+    forced?.toothStyle ??
+    rng.pick<ToothStyle>([
+      'row_even',
+      'fang_pair',
+      'buck',
+      'shark',
+      'gap_grin',
+      'stump',
+      'gold_cap',
+    ]);
 
   const maxMouthTop = lowestEyeRow - 2;
   let lipMid = Math.min(midR, maxMouthTop - 1);
@@ -91,12 +102,13 @@ export function paintMouthFromCurve(
   }
 
   if (style === 'tiny') {
-    const ox = rng.int(-Math.floor(halfW * 0.4), Math.floor(halfW * 0.4));
+    const ox = rng.int(-Math.floor(halfW * 0.25), Math.floor(halfW * 0.25));
     const oy = rng.int(-1, 1);
     const cx = midC + ox;
     const cy = Math.min(lipMid + oy, maxMouthTop - 1);
-    const rw = rng.int(1, 2);
-    const rh = rng.int(1, 2);
+    // Min readable tiny mouth (not a single pixel)
+    const rw = Math.max(2, rng.int(2, 3));
+    const rh = Math.max(1, rng.int(1, 2));
     for (let dy = -rh; dy <= rh; dy++) {
       for (let dx = -rw; dx <= rw; dx++) {
         if ((dx * dx) / (rw * rw + 0.01) + (dy * dy) / (rh * rh + 0.01) > 1.2) continue;
@@ -108,11 +120,15 @@ export function paintMouthFromCurve(
       putMouth(grid, cx + dx, cy + rh + 1, base, palette.outline, 'outline', 'upper', true);
       putMouth(grid, cx + dx, cy - rh - 1, base, palette.outline, 'outline', 'lower', true);
     }
+    // Always add a couple of teeth so tiny mouths aren't empty voids
+    putMouth(grid, cx - 1, cy, base, tooth, 'tooth', 'cavity', true);
+    putMouth(grid, cx + 1, cy, base, tooth, 'tooth', 'cavity', true);
     return;
   }
 
   const faceWApprox = halfW * 2;
-  const W = Math.max(2, Math.floor(faceWApprox * rng.float(0.15, 0.275)));
+  const minW = forced?.minHalfW ?? 2;
+  const W = Math.max(minW, Math.floor(faceWApprox * rng.float(0.18, 0.3)));
 
   let openUp = 0;
   let openDown = 0;

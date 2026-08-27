@@ -105,24 +105,15 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
 export function generateMonster(seed: string): MonsterData {
   let best: MonsterData | null = null;
   let bestScore = -Infinity;
-  let bestLimbed: MonsterData | null = null;
-  let bestLimbedScore = -Infinity;
 
   for (let v = 0; v < CANDIDATE_COUNT; v++) {
     const candidate = generateCandidate(`${seed}#v${v}`, seed);
     const s = scoreMonster(candidate);
-    const limbs = candidate.particles.filter((p) => p.part === 'appendage').length;
     if (s > bestScore) {
       bestScore = s;
       best = candidate;
     }
-    if (limbs >= 8 && s > bestLimbedScore) {
-      bestLimbedScore = s;
-      bestLimbed = candidate;
-    }
   }
 
-  // Prefer a limbed candidate unless the limbless one scores much higher
-  if (bestLimbed && bestLimbedScore >= bestScore - 12) return bestLimbed;
   return best!;
 }

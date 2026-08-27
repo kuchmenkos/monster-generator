@@ -117,12 +117,12 @@ export function createBlobs(rng: Rng): { blobs: Blob[]; archetype: BodyArchetype
         break;
       }
       case 'lanky':
-        // Small body in upper third — legs added later as long sticks
-        y = 0.15 + t * 0.45;
-        rx = rng.float(0.18, 0.32);
-        ry = rng.float(0.18, 0.3);
-        rz = rng.float(0.16, 0.28);
-        x = rng.float(-0.1, 0.1);
+        // Compact tall torso (no stick legs — limbless silhouette)
+        y = -0.05 + t * 0.55;
+        rx = rng.float(0.2, 0.34);
+        ry = rng.float(0.22, 0.38);
+        rz = rng.float(0.18, 0.3);
+        x = rng.float(-0.08, 0.08);
         break;
       case 'slug':
         // Horizontal elongated body
@@ -135,17 +135,17 @@ export function createBlobs(rng: Rng): { blobs: Blob[]; archetype: BodyArchetype
       case 'bighead':
         if (i === 0) {
           // Huge head sphere
-          y = 0.2;
+          y = 0.15;
           rx = rng.float(0.55, 0.85);
           ry = rng.float(0.5, 0.75);
           rz = rng.float(0.45, 0.65);
           x = 0;
         } else {
-          // Tiny stub body under head
-          y = -0.35;
-          rx = rng.float(0.12, 0.22);
-          ry = rng.float(0.1, 0.18);
-          rz = rx;
+          // Fuller under-head mass (no stub meant for legs)
+          y = -0.22;
+          rx = rng.float(0.22, 0.38);
+          ry = rng.float(0.18, 0.3);
+          rz = rx * rng.float(0.85, 1);
           x = rng.float(-0.05, 0.05);
         }
         break;
@@ -225,92 +225,8 @@ export function createBlobs(rng: Rng): { blobs: Blob[]; archetype: BodyArchetype
   }
   blobs.push(...mirrored);
 
-  // Appendages: horns, antennae, spikes, stubs — elongated metaballs
-  const appendageSets = rng.int(0, 3);
-  for (let s = 0; s < appendageSets; s++) {
-    const style = rng.pick(['horn', 'antenna', 'spike', 'ear', 'halo', 'leg'] as const);
-    const count = style === 'halo' ? rng.int(4, 7) : rng.int(1, 2);
-
-    for (let i = 0; i < count; i++) {
-      const side = count === 1 ? (rng.chance(0.5) ? 1 : -1) : i % 2 === 0 ? -1 : 1;
-      let x = 0;
-      let y = 0;
-      let z = 0;
-      let rx = 0.12;
-      let ry = 0.28;
-      let rz = 0.12;
-
-      switch (style) {
-        case 'horn':
-          x = side * rng.float(0.2, 0.45);
-          y = rng.float(0.35, 0.75);
-          z = rng.float(-0.1, 0.15);
-          rx = rng.float(0.08, 0.16);
-          ry = rng.float(0.22, 0.45);
-          rz = rx;
-          break;
-        case 'antenna':
-          x = side * rng.float(0.1, 0.35);
-          y = rng.float(0.45, 0.9);
-          z = rng.float(-0.05, 0.2);
-          rx = rng.float(0.05, 0.1);
-          ry = rng.float(0.25, 0.5);
-          rz = rx;
-          break;
-        case 'spike':
-          x = side * rng.float(0.35, 0.7);
-          y = rng.float(-0.2, 0.4);
-          z = rng.float(-0.15, 0.15);
-          rx = rng.float(0.1, 0.22);
-          ry = rng.float(0.08, 0.18);
-          rz = rng.float(0.08, 0.16);
-          break;
-        case 'ear':
-          x = side * rng.float(0.35, 0.6);
-          y = rng.float(0.15, 0.45);
-          z = rng.float(-0.05, 0.1);
-          rx = rng.float(0.12, 0.22);
-          ry = rng.float(0.14, 0.28);
-          rz = rng.float(0.08, 0.14);
-          break;
-        case 'halo': {
-          const ang = (i / count) * Math.PI * 2;
-          const rad = rng.float(0.35, 0.55);
-          x = Math.cos(ang) * rad;
-          y = rng.float(0.55, 0.85);
-          z = Math.sin(ang) * rad * 0.4;
-          rx = rng.float(0.06, 0.1);
-          ry = rx;
-          rz = rx;
-          break;
-        }
-        case 'leg':
-          x = side * rng.float(0.12, 0.35);
-          y = rng.float(-0.85, -0.45);
-          z = rng.float(-0.08, 0.08);
-          rx = rng.float(0.06, 0.12);
-          ry = rng.float(0.2, 0.4);
-          rz = rx;
-          break;
-      }
-
-      const blob: Blob = {
-        x,
-        y,
-        z,
-        rx,
-        ry,
-        rz,
-        strength: rng.float(0.7, 1.1),
-        kind: 'appendage',
-      };
-      blobs.push(blob);
-      // Mirror appendages (except single centered ones / halo already full)
-      if (style !== 'halo' && Math.abs(x) > 0.05 && count === 1) {
-        blobs.push({ ...blob, x: -x });
-      }
-    }
-  }
+  // No field appendage metaballs — legs/spikes/stubs broke silhouette integrity.
+  // Sparse horns/antennae come only from applyLimbs head toppers.
 
   return { blobs, archetype };
 }

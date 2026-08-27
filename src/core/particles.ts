@@ -500,7 +500,7 @@ function roundSharpCorners(grid: MonsterGrid): void {
   }
 }
 
-/** Connected hair tufts growing from silhouette + optional drips. */
+/** Sparse rim flecks only — no bottom drips (read as fake legs). */
 function applyFlecksAndDrips(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): void {
   const rim = rimCells(grid);
   if (rim.length === 0) return;
@@ -510,36 +510,32 @@ function applyFlecksAndDrips(rng: Rng, grid: MonsterGrid, palette: MonsterPalett
   const minR = Math.min(...solid.map((c) => c.row));
   const midR = (minR + maxR) / 2;
 
-  // Prefer top / side rim for hair tufts
+  // Prefer top / side rim for hair tufts — 0–2 tufts max
   const topRim = rim.filter((c) => c.row >= midR);
   const anchors = topRim.length >= 2 ? topRim : rim;
-  const tuftCount = rng.int(1, Math.max(2, Math.round(3 * grid.scaleRef * 0.45)));
+  const tuftCount = rng.int(0, Math.min(2, Math.max(1, Math.round(2 * grid.scaleRef * 0.35))));
 
   for (let t = 0; t < tuftCount; t++) {
     const start = anchors[rng.int(0, anchors.length - 1)]!;
     const len = rng.int(
-      Math.max(3, Math.round(3 * grid.scaleRef * 0.7)),
-      Math.max(5, Math.round(8 * grid.scaleRef * 0.7)),
+      Math.max(2, Math.round(2 * grid.scaleRef * 0.6)),
+      Math.max(3, Math.round(5 * grid.scaleRef * 0.55)),
     );
     let col = start.col;
     let row = start.row;
-    // Grow mostly upward / outward
     const outDir = start.col < 0 || rng.chance(0.5) ? -1 : 1;
 
     for (let i = 1; i <= len; i++) {
-      // Prefer up, slight outward, rare sideways — always adjacent
       const step = rng.pick([
         [0, 1],
         [0, 1],
         [outDir, 1],
         [outDir, 0],
-        [-outDir, 1],
       ] as const);
       col += step[0];
       row += step[1];
       const key = cellKey(col, row);
       if (grid.cells.has(key)) {
-        // Nudge outward if occupied
         col += outDir;
         if (grid.cells.has(cellKey(col, row))) break;
       }
@@ -561,39 +557,7 @@ function applyFlecksAndDrips(rng: Rng, grid: MonsterGrid, palette: MonsterPalett
       });
     }
   }
-
-  // Drips hanging from bottom (~30%), tapering size
-  if (rng.chance(0.3)) {
-    const bottom = rim.filter((c) => {
-      const below = grid.cells.get(cellKey(c.col, c.row - 1));
-      return !below || !isSolidPart(below.part);
-    });
-    const dripN = rng.int(2, 4);
-    for (let i = 0; i < dripN && bottom.length > 0; i++) {
-      const src = bottom[rng.int(0, bottom.length - 1)]!;
-      const len = rng.int(2, 4);
-      for (let d = 1; d <= len; d++) {
-        const key = cellKey(src.col, src.row - d);
-        if (grid.cells.has(key)) break;
-        const tip = d / len;
-        grid.cells.set(key, {
-          col: src.col,
-          row: src.row - d,
-          x: grid.originX + src.col * grid.cell,
-          y: grid.originY + (src.row - d) * grid.cell,
-          z: src.z,
-          nx: 0,
-          ny: -0.2,
-          nz: 0.9,
-          color: palette.shadow,
-          part: 'body',
-          phase: rng.float(0, Math.PI * 2),
-          size: Math.max(0.5, 1 - tip * 0.4),
-          tipFactor: tip,
-        });
-      }
-    }
-  }
+  // Bottom drips intentionally disabled (limbless silhouette)
 }
 
 /** Oval ground blob under the lowest solid cells — grounds the silhouette. */

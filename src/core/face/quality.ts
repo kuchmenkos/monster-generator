@@ -1,4 +1,5 @@
 import type { MonsterGrid, Particle, ParticlePart } from '../types';
+import { cellKey } from '../types';
 
 const FACE_PARTS: ReadonlySet<ParticlePart> = new Set([
   'eye',
@@ -85,6 +86,43 @@ export function pruneFloatingFeatures(grid: MonsterGrid): number {
     if (!FACE_PARTS.has(c.part)) continue;
     if (visited.has(`${c.col},${c.row}`)) continue;
     if (grid.cells.delete(k)) removed++;
+  }
+  return removed;
+}
+
+/** Drop flecks not within 1 ortho step of body/hair (silhouette debris). */
+export function pruneOrphanFlecks(grid: MonsterGrid): number {
+  let removed = 0;
+  for (const [k, c] of [...grid.cells.entries()]) {
+    if (c.part !== 'fleck') continue;
+    let near = false;
+    for (const [dc, dr] of ORTHO) {
+      const nb = grid.cells.get(cellKey(c.col + dc, c.row + dr));
+      if (nb && (nb.part === 'body' || nb.part === 'appendage' || nb.part === 'hair')) {
+        near = true;
+        break;
+      }
+    }
+    if (!near && grid.cells.delete(k)) removed++;
+  }
+  return removed;
+}
+
+/**
+ * Remove appendage cells in the bottom 15% of the body bbox (pseudo-legs).
+ * Head toppers above 70% height are kept.
+ */
+export function stripBottomAppendages(grid: MonsterGrid): number {
+  const body = [...grid.cells.values()].filter((c) => c.part === 'body');
+  if (body.length === 0) return 0;
+  const minR = Math.min(...body.map((c) => c.row));
+  const maxR = Math.max(...body.map((c) => c.row));
+  const h = Math.max(1, maxR - minR);
+  const legBand = minR + Math.floor(h * 0.15);
+  let removed = 0;
+  for (const [k, c] of [...grid.cells.entries()]) {
+    if (c.part !== 'appendage') continue;
+    if (c.row < legBand && grid.cells.delete(k)) removed++;
   }
   return removed;
 }

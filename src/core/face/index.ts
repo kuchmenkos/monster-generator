@@ -5,8 +5,11 @@ export {
   countFloatingFaceParticles,
   enforceParticleBudget,
   pruneFloatingFeatures,
+  pruneOrphanFlecks,
+  stripBottomAppendages,
   stripFloatingFaceParticles,
 } from './quality';
+export type { FacePreset } from './composition';
 export type {
   AccentStyle,
   BrowStyle,

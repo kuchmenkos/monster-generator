@@ -42,14 +42,14 @@ export function paintHair(
 
   const strandCount =
     style === 'afro_puff'
-      ? rng.int(10, 16)
+      ? rng.int(8, 12)
       : style === 'spikes'
-        ? rng.int(5, 8)
+        ? rng.int(4, 7)
         : style === 'braid'
           ? rng.int(2, 3)
           : style === 'mohawk'
-            ? rng.int(4, 7)
-            : rng.int(6, 14);
+            ? rng.int(4, 6)
+            : rng.int(4, 10);
 
   for (let s = 0; s < strandCount && painted < budget; s++) {
     let anchor: GridCell;
@@ -116,10 +116,14 @@ function growStrand(
     col += step[0];
     row += step[1];
     const key = cellKey(col, row);
-    if (grid.cells.has(key) && grid.cells.get(key)!.part === 'body') {
+    const existing = grid.cells.get(key);
+    if (existing && (existing.part === 'eye' || existing.part === 'pupil' || existing.part === 'mouth')) {
+      break;
+    }
+    if (existing && existing.part === 'body') {
       col += outDir;
       if (grid.cells.has(cellKey(col, row))) break;
-    } else if (grid.cells.has(key) && grid.cells.get(key)!.part === 'hair') {
+    } else if (existing && existing.part === 'hair') {
       break;
     }
     const tip = i / len;
