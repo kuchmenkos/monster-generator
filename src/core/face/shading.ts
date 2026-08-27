@@ -359,8 +359,10 @@ export function paintOutlineRing(
   ] as const;
 
   const border = new Set<string>();
+  let maxMaskRow = -Infinity;
   for (const key of mask) {
     const [xs, ys] = key.split(',').map(Number) as [number, number];
+    maxMaskRow = Math.max(maxMaskRow, originRow + ys);
     for (let r = 1; r <= thick; r++) {
       for (const [dx, dy] of [...ORTHO, ...DIAG]) {
         const nk = `${xs + dx * r},${ys + dy * r}`;
@@ -384,6 +386,8 @@ export function paintOutlineRing(
     const existing = grid.cells.get(cellKey(col, row));
     // Outline only on body (or an existing face cell) — never a void shard off-silhouette
     if (!existing || existing.part === 'aura') continue;
+    // Never stamp the forehead coat: the row above the mask stays fur
+    if (existing.part === 'body' && row > maxMaskRow) continue;
     putCell(grid, col, row, base, outlineColor, 'outline', {
       zBoost: 0.03,
     });

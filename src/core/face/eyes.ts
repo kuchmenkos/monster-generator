@@ -229,13 +229,16 @@ function paintInnerRimOnVoid(
     const cell = grid.cells.get(cellKey(col, row));
     if (!cell || cell.part !== 'eye') continue;
     let voidSide = false;
+    let foreheadBody = false;
     let eyeN = 0;
     for (const [dx, dy] of ORTHO) {
       const nb = grid.cells.get(cellKey(col + dx, row + dy));
       if (!nb || nb.part === 'aura') voidSide = true;
       else if (nb.part === 'eye' || nb.part === 'pupil') eyeN++;
+      // Body sitting above this sclera cell = forehead — rim the eye, not the coat
+      else if (nb.part === 'body' && dy === 1) foreheadBody = true;
     }
-    if (!voidSide || eyeN >= 3) continue;
+    if ((!voidSide && !foreheadBody) || eyeN >= 3) continue;
     putCell(grid, col, row, base, outlineColor, 'outline', {
       zBoost: 0.035,
       faceSide: faceSide === 0 ? undefined : faceSide,

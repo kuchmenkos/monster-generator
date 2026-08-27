@@ -80,6 +80,8 @@ function paintOneLash(
         const col = x + flare * L;
         const row = top + L;
         if (isBody(grid, col, row)) continue;
+        // Cell above is coat → this is the forehead junction, not outward void
+        if (isBody(grid, col, row + 1)) continue;
         if (coatEmbedded(grid, col, row)) continue;
         if (!touchesEyeRim(grid, col, row) && L > 1 && !touchesEyeRim(grid, col, row - 1)) continue;
         paintWithShadow(grid, col, row, base, palette.brow, 'lash', {
