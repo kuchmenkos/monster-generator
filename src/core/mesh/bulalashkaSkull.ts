@@ -12,6 +12,11 @@ const TMP = new Vector3();
 const RAY = new Raycaster();
 const ORIGIN = new Vector3();
 
+export interface SkullBuildOptions {
+  /** Icosphere subdivision level — 2 for gallery thumbs, 3 default */
+  subdivisions?: number;
+}
+
 /** Sample merged blob SDF-ish field — higher = inside body. */
 function blobField(blobs: Blob[], x: number, y: number, z: number): number {
   let sum = 0;
@@ -25,7 +30,7 @@ function blobField(blobs: Blob[], x: number, y: number, z: number): number {
   return sum;
 }
 
-/** Port Dy() — boxiness, lumps, rear pear taper on icosphere. */
+/** Port Dy() v2 — stronger boxiness, pear rear, muzzle/butt shelf. */
 function deformBulalashka(
   pos: Float32Array,
   blobs: Blob[],
@@ -37,28 +42,46 @@ function deformBulalashka(
     TMP.set(pos[ix]!, pos[ix + 1]!, pos[ix + 2]!);
     const dir = TMP.clone().normalize();
 
-    // Base radius from blob field along ray
-    let r = 0.35;
-    for (let t = 0.55; t <= 1.25; t += 0.18) {
+    let r = 0.32;
+    for (let t = 0.45; t <= 1.35; t += 0.14) {
       const field = blobField(blobs, dir.x * t, dir.y * t, dir.z * t);
-      r = Math.max(r, 0.28 + field * 0.42);
+      r = Math.max(r, 0.26 + field * 0.48);
     }
 
-    // Boxiness — flatten toward cube silhouette
-    const box = Math.max(Math.abs(dir.x), Math.abs(dir.y * 0.92), Math.abs(dir.z * 0.88));
-    r *= 1 + params.boxiness * (box - 0.55) * 0.35;
+    const box = Math.max(Math.abs(dir.x), Math.abs(dir.y * 0.9), Math.abs(dir.z * 0.85));
+    r *= 1 + params.boxiness * (box - 0.48) * 0.55;
 
-    // Lumps — low-frequency wobble
     const lump =
       Math.sin(dir.x * 7.3 + dir.y * 5.1) * Math.cos(dir.z * 6.7 + dir.y * 4.2);
-    r *= 1 + params.lumpiness * lump * 0.08;
+    const lump2 = Math.sin(dir.x * 13.7 - dir.z * 9.2) * 0.5;
+    r *= 1 + params.lumpiness * (lump * 0.1 + lump2 * 0.06);
 
-    // Pear / jaw — shrink rear (-Z) and widen lower hemisphere
-    if (dir.z < -0.05) r *= 1 - params.jawDrop * (0.12 + Math.max(0, -dir.z) * 0.18);
-    if (dir.y < -0.15 && dir.z < 0.1) r *= 1 + params.jawDrop * 0.06;
+    // Pear rear — narrow -Z, wide lower sides
+    if (dir.z < 0) {
+      r *= 1 - params.jawDrop * (0.18 + Math.max(0, -dir.z) * 0.28);
+      if (dir.y < 0.1) r *= 1 + params.jawDrop * 0.1;
+    }
+
+    // Butt shelf protrusion (-Z lower)
+    if (dir.z < -0.25 && dir.y < 0.15) {
+      r *= 1 + (0.15 + params.jawDrop * 0.12) * Math.min(1, (-dir.z - 0.25) * 2.5);
+    }
+
+    // Jaw shelf / chin
+    if (dir.y < -0.25 && dir.z > -0.15 && dir.z < 0.35) {
+      r *= 1 + params.jawDrop * 0.08;
+    }
 
     // Front muzzle bulge (+Z)
-    if (dir.z > 0.35 && dir.y > -0.05) r *= 1 + dir.z * 0.12;
+    if (dir.z > 0.2) {
+      const muzzle = dir.z * (0.18 + Math.max(0, dir.y + 0.05) * 0.08);
+      r *= 1 + muzzle;
+    }
+
+    // Mushroom cap — widen upper +Z
+    if (dir.y > 0.25 && dir.z > -0.1) {
+      r *= 1 + dir.y * 0.08;
+    }
 
     pos[ix] = dir.x * r * params.scale;
     pos[ix + 1] = dir.y * r * params.scale;
@@ -69,7 +92,6 @@ function deformBulalashka(
 export interface BulalashkaSkull {
   geometry: BufferGeometry;
   mesh: Mesh;
-  /** Axis-aligned bounds after deform */
   bounds: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number };
 }
 
@@ -92,8 +114,13 @@ function computeBounds(pos: Float32Array) {
 }
 
 /** Build deformed icosphere skull from procedural blobs. */
-export function buildBulalashkaSkull(blobs: Blob[], params: BulalashkaSkullParams): BulalashkaSkull {
-  const ico = new IcosahedronGeometry(1, 3);
+export function buildBulalashkaSkull(
+  blobs: Blob[],
+  params: BulalashkaSkullParams,
+  options: SkullBuildOptions = {},
+): BulalashkaSkull {
+  const subdiv = options.subdivisions ?? 3;
+  const ico = new IcosahedronGeometry(1, subdiv);
   const pos = new Float32Array(ico.attributes.position.array as ArrayLike<number>);
   deformBulalashka(pos, blobs, params);
   ico.setAttribute('position', new Float32BufferAttribute(pos, 3));
@@ -110,16 +137,11 @@ export interface SurfaceAnchor {
   normal: Vector3;
 }
 
-/**
- * Raycast anchor on front hemisphere — port cb()/Ly().
- * Face-plane x,y are world coords on the skull.
- */
 export function anchorOnSurface(skull: BulalashkaSkull, x: number, y: number): SurfaceAnchor | null {
   ORIGIN.set(x, y, skull.bounds.maxZ + 1.5);
   RAY.set(ORIGIN, new Vector3(0, 0, -1));
   const hits = RAY.intersectObject(skull.mesh, false);
   if (hits.length === 0) {
-    // Fallback: project toward front
     const z = skull.bounds.maxZ * 0.85;
     return { point: new Vector3(x, y, z), normal: new Vector3(0, 0, 1) };
   }
@@ -133,7 +155,6 @@ export function anchorOnSurface(skull: BulalashkaSkull, x: number, y: number): S
   return { point: hit.point.clone(), normal };
 }
 
-/** Max |x| on silhouette at world Y — port Hy()/Tx(). */
 export function silhouetteWidthAtY(skull: BulalashkaSkull, y: number, tolerance = 0.06): number {
   const pos = skull.geometry.attributes.position.array as Float32Array;
   let maxAbsX = 0.15;
@@ -143,4 +164,12 @@ export function silhouetteWidthAtY(skull: BulalashkaSkull, y: number, tolerance 
     maxAbsX = Math.max(maxAbsX, Math.abs(pos[i]!));
   }
   return maxAbsX;
+}
+
+/** Inverted hull outline mesh for body rim. */
+export function buildBodyOutline(skull: BulalashkaSkull, materials: { outline: import('three').Material }): Mesh {
+  const hull = new Mesh(skull.geometry.clone(), materials.outline);
+  hull.scale.multiplyScalar(1.045);
+  hull.name = 'body-outline';
+  return hull;
 }

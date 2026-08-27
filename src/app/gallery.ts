@@ -2,11 +2,10 @@ import { Container } from 'pixi.js';
 import { generateMonster } from '../core/monster';
 import { randomSeed } from '../core/rng';
 import type { MonsterData } from '../core/types';
-import { MonsterView } from '../render/MonsterView';
+import { BulalashkaSceneView } from '../render/BulalashkaSceneView';
 
 export interface GalleryOptions {
   cols: number;
-  /** Initial row count hint (actual rows grow with seed count). */
   rows: number;
   cellSize: number;
   padding: number;
@@ -15,11 +14,10 @@ export interface GalleryOptions {
 }
 
 /**
- * Dense grid of animated monsters.
- * Append-friendly: +N keeps existing views; fit-to-box avoids overlaps.
+ * Dense grid of mesh-rendered monsters (HEADDDS-style thumbnails).
  */
 export class Gallery extends Container {
-  readonly views: MonsterView[] = [];
+  readonly views: BulalashkaSceneView[] = [];
   private seeds: string[] = [];
   onSelect: ((seed: string, data: MonsterData) => void) | null = null;
   private cols: number;
@@ -54,7 +52,7 @@ export class Gallery extends Container {
     return this.cols * this.cellSize + this.padding * 2;
   }
 
-  private placeView(view: MonsterView, index: number): void {
+  private placeView(view: BulalashkaSceneView, index: number): void {
     const box = this.cellSize * 0.86;
     view.fitInto(box, box);
     const col = index % this.cols;
@@ -63,14 +61,17 @@ export class Gallery extends Container {
     view.y = this.padding + row * this.cellSize + this.cellSize * 0.5;
   }
 
-  private createView(seed: string, index: number): MonsterView {
+  private createView(seed: string, index: number): BulalashkaSceneView {
     const data = generateMonster(seed);
-    const view = new MonsterView({
+    if (!data.meshBundle || !data.blobs) {
+      throw new Error(`Missing meshBundle for ${seed}`);
+    }
+    const view = new BulalashkaSceneView({
       data,
-      scale: this.cellSize * 0.4,
-      galleryYaw: 0.28,
-      galleryPitch: 0.08,
-      thumbnail: true,
+      blobs: data.blobs,
+      allowRotate: false,
+      size: 256,
+      subdivisions: 2,
     });
     this.placeView(view, index);
     view.on('pointertap', () => {

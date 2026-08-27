@@ -8,17 +8,18 @@ import {
   Scene,
   WebGLRenderer,
 } from 'three';
-import { buildVolumetricEyeScene } from '../core/eyes';
+import { buildBulalashkaScene } from '../core/mesh/buildScene';
 import type { Blob, MonsterData } from '../core/types';
 
-/** HEADDDS-style volumetric eyes: Three.js canvas → Pixi Sprite. */
-export class BulalashkaMeshView extends Sprite {
-  private readonly data: MonsterData;
+/** Unified HEADDDS-style mesh scene: body + eyes + mouth + butt. */
+export class BulalashkaSceneView extends Sprite {
+  readonly data: MonsterData;
   private readonly threeRenderer: WebGLRenderer;
   private readonly threeScene: Scene;
   private readonly threeCamera: PerspectiveCamera;
-  private readonly eyeRoot: Group;
+  private readonly sceneRoot: Group;
   private readonly eyelids: Mesh[];
+  private readonly pupils: Mesh[];
   private readonly canvas: HTMLCanvasElement;
   private readonly pixiTexture: Texture;
 
@@ -26,59 +27,66 @@ export class BulalashkaMeshView extends Sprite {
   private blinkActive = 0;
   private nextBlinkAt: number;
   private elapsed = 0;
-
   private dragYaw = 0;
   private dragPitch = 0;
+  private lookX = 0;
+  private lookY = 0;
   private readonly allowRotate: boolean;
+  private readonly rtSize: number;
 
   constructor(options: {
     data: MonsterData;
     blobs: Blob[];
-    mouthFloorY: number;
     allowRotate?: boolean;
     size?: number;
+    subdivisions?: number;
   }) {
     super();
     this.data = options.data;
     this.allowRotate = options.allowRotate ?? true;
+    this.rtSize = options.size ?? 512;
 
-    const bundle = options.data.volumetricEyes;
-    if (!bundle) throw new Error('BulalashkaMeshView requires volumetricEyes');
+    const bundle = options.data.meshBundle ?? options.data.volumetricEyes;
+    if (!bundle || !('mouth' in bundle)) {
+      throw new Error('BulalashkaSceneView requires meshBundle');
+    }
+    const meshBundle = options.data.meshBundle!;
 
-    const rtSize = options.size ?? 512;
     this.canvas = document.createElement('canvas');
-    this.canvas.width = rtSize;
-    this.canvas.height = rtSize;
+    this.canvas.width = this.rtSize;
+    this.canvas.height = this.rtSize;
 
     this.threeRenderer = new WebGLRenderer({
       alpha: true,
       antialias: true,
       canvas: this.canvas,
     });
-    this.threeRenderer.setSize(rtSize, rtSize, false);
+    this.threeRenderer.setSize(this.rtSize, this.rtSize, false);
     this.threeRenderer.setPixelRatio(1);
-    this.threeRenderer.setClearColor(0x000000, 0);
+    this.threeRenderer.setClearColor(0x050508, 1);
 
     this.threeScene = new Scene();
     this.threeCamera = new PerspectiveCamera(28, 1, 0.05, 20);
-    this.threeCamera.position.set(0, 0.05, 2.4);
+    this.threeCamera.position.set(0, 0.04, 2.35);
 
-    const amb = new AmbientLight(0xffffff, 0.55);
-    const key = new DirectionalLight(0xffffff, 0.95);
+    const amb = new AmbientLight(0xffffff, 0.5);
+    const key = new DirectionalLight(0xffffff, 1.0);
     key.position.set(0.6, 1.2, 2);
-    const fill = new DirectionalLight(0xaaccff, 0.35);
+    const fill = new DirectionalLight(0xaaccff, 0.38);
     fill.position.set(-1, 0.2, 1);
     this.threeScene.add(amb, key, fill);
 
-    const built = buildVolumetricEyeScene(
+    const built = buildBulalashkaScene(
       options.blobs,
       this.data.palette,
-      bundle,
-      options.mouthFloorY,
+      meshBundle,
+      this.data.buttArchetype,
+      { subdivisions: options.subdivisions },
     );
-    this.eyeRoot = built.root;
+    this.sceneRoot = built.root;
     this.eyelids = built.eyelids;
-    this.threeScene.add(this.eyeRoot);
+    this.pupils = built.pupils;
+    this.threeScene.add(this.sceneRoot);
 
     this.renderThree();
     this.pixiTexture = Texture.from(this.canvas);
@@ -112,22 +120,33 @@ export class BulalashkaMeshView extends Sprite {
       this.cursor = 'grab';
     });
     this.on('pointermove', (e) => {
-      if (!dragging) return;
-      const dx = e.global.x - lastX;
-      const dy = e.global.y - lastY;
-      lastX = e.global.x;
-      lastY = e.global.y;
-      this.dragYaw += dx * 0.012;
-      this.dragPitch = Math.max(-0.55, Math.min(0.55, this.dragPitch + dy * 0.01));
+      if (dragging) {
+        const dx = e.global.x - lastX;
+        const dy = e.global.y - lastY;
+        lastX = e.global.x;
+        lastY = e.global.y;
+        this.dragYaw += dx * 0.012;
+        this.dragPitch = Math.max(-0.55, Math.min(0.55, this.dragPitch + dy * 0.01));
+      }
+      this.lookAt(e.global.x, e.global.y);
     });
+    this.on('pointerout', () => this.lookAt(null));
   }
 
   private renderThree(): void {
     this.threeRenderer.render(this.threeScene, this.threeCamera);
   }
 
-  lookAt(_x: number | null, _y?: number | null): void {
-    // Mesh pupil look-at — future pass
+  lookAt(worldX: number | null, worldY?: number | null): void {
+    if (worldX === null || worldY === null || worldY === undefined) {
+      this.lookX *= 0.85;
+      this.lookY *= 0.85;
+      return;
+    }
+    const cx = this.x;
+    const cy = this.y;
+    this.lookX = Math.max(-1, Math.min(1, (worldX - cx) / (this.rtSize * 0.45)));
+    this.lookY = Math.max(-1, Math.min(1, (worldY - cy) / (this.rtSize * 0.45)));
   }
 
   setDisplayScale(px: number): void {
@@ -154,11 +173,17 @@ export class BulalashkaMeshView extends Sprite {
 
     const wobY = Math.sin(this.elapsed * anim.swayFreq) * anim.swayAmp * 0.4;
     const wobP = Math.cos(this.elapsed * anim.breathFreq * 0.7) * anim.breathAmp * 2;
-    this.eyeRoot.rotation.set(
+    this.sceneRoot.rotation.set(
       this.dragPitch + wobP,
       this.dragYaw + wobY,
       Math.sin(this.elapsed * 0.9) * 0.02,
     );
+
+    const pupilShift = 0.012 * (0.5 + anim.curiosity * 0.5);
+    for (const pupil of this.pupils) {
+      pupil.position.x = this.lookX * pupilShift;
+      pupil.position.y = -this.lookY * pupilShift * 0.7;
+    }
 
     this.blinkTimer += dt;
     if (this.blinkTimer >= this.nextBlinkAt && this.blinkActive <= 0) {
@@ -191,3 +216,6 @@ export class BulalashkaMeshView extends Sprite {
     super.destroy(options);
   }
 }
+
+/** @deprecated Use BulalashkaSceneView */
+export { BulalashkaSceneView as BulalashkaMeshView };

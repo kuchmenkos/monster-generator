@@ -12,7 +12,7 @@ import {
 import { Gallery } from './app/gallery';
 import { createUi, type GalleryTab } from './app/ui';
 import { generateMonster } from './core/monster';
-import { MonsterView } from './render/MonsterView';
+import { BulalashkaSceneView } from './render/BulalashkaSceneView';
 
 type Mode = 'gallery' | 'detail';
 
@@ -137,7 +137,14 @@ async function main() {
       const size = 256;
       const data = generateMonster(seed);
       const wrap = new Container();
-      const temp = new MonsterView({ data, scale: 40 });
+      if (!data.meshBundle || !data.blobs) return undefined;
+      const temp = new BulalashkaSceneView({
+        data,
+        blobs: data.blobs,
+        size: 256,
+        subdivisions: 2,
+        allowRotate: false,
+      });
       temp.fitInto(size * 0.85, size * 0.85);
       temp.x = size / 2;
       temp.y = size / 2;
@@ -250,7 +257,17 @@ async function main() {
       const size = 512;
       const data = generateMonster(seed);
       const wrap = new Container();
-      const temp = new MonsterView({ data, scale: 80 });
+      if (!data.meshBundle || !data.blobs) {
+        ui.showToast('Немає mesh для експорту');
+        return;
+      }
+      const temp = new BulalashkaSceneView({
+        data,
+        blobs: data.blobs,
+        size: 512,
+        subdivisions: 3,
+        allowRotate: false,
+      });
       temp.fitInto(size * 0.85, size * 0.85);
       temp.x = size / 2;
       temp.y = size / 2;

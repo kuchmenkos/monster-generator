@@ -44,6 +44,7 @@ export function createBulalashkaMaterials(palette: MonsterPalette): BulalashkaMa
   const skin = new MeshToonMaterial({
     color: rgbToColor(palette.base),
     gradientMap: map,
+    vertexColors: true,
   });
   const socket = new MeshToonMaterial({
     color: rgbToColor(darken(palette.base, 0.45)),

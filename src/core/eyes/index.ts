@@ -32,7 +32,9 @@ export function generateEyeParams(rng: Rng, bodyArchetype: string): BulalashkaEy
   const eyeLayout = rng.pick(layoutPick);
 
   const stylePick: import('../types').EyeStyle[] =
-    eyeLayout === 'cluster' ? ['cluster', 'cluster', 'ball'] : ['ball', 'ball', 'hole', 'cluster'];
+    eyeLayout === 'cluster'
+      ? ['cluster', 'cluster', 'ball', 'bead']
+      : ['ball', 'ball', 'hole', 'cluster', 'bead', 'stalk', 'pit', 'bulb'];
   const eyeStyle = rng.pick(stylePick);
 
   const eyeCount =

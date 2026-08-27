@@ -176,7 +176,7 @@ export interface Blob {
 export type EyeLayout = 'row' | 'ring' | 'cluster' | 'column' | 'scatter';
 
 /** Volumetric eye geometry style (HEADDDS Hx). */
-export type EyeStyle = 'ball' | 'cluster' | 'hole';
+export type EyeStyle = 'ball' | 'cluster' | 'hole' | 'bead' | 'stalk' | 'pit' | 'bulb';
 
 export type PupilShape = 'round' | 'slit' | 'cross' | 'goat';
 
@@ -220,6 +220,43 @@ export interface VolumetricEyeMetrics {
   silhouetteClip: number;
 }
 
+export type MouthStyle = 'closed-line' | 'zigzag' | 'open-maw' | 'tongue-out' | 'tiny';
+export type LipCurveKind = 'smile' | 'scowl' | 'wave' | 'skew' | 'flat';
+
+export interface MouthBundle {
+  style: MouthStyle;
+  midX: number;
+  midY: number;
+  halfW: number;
+  openUp: number;
+  openDown: number;
+  curve: LipCurveKind;
+  amp: number;
+  skew: number;
+  hasCavity: boolean;
+}
+
+/** Mesh scene quality metrics. */
+export interface MeshBundleMetrics {
+  eyeCount: number;
+  avgBulge: number;
+  socketDepth: number;
+  silhouetteClip: number;
+  mouthCavity: boolean;
+  buttProtrusion: number;
+  vertexColorSteps: number;
+  patternKind: string;
+}
+
+/** Serializable mesh bundle for Three.js renderer. */
+export interface MeshBundle {
+  volumetricEyes: VolumetricEyeBundle;
+  mouth: MouthBundle;
+  patternKind: string;
+  metrics: MeshBundleMetrics;
+  variantSeed: string;
+}
+
 /** Serializable bundle for Three.js detail renderer. */
 export interface VolumetricEyeBundle {
   params: BulalashkaEyeParams;
@@ -249,7 +286,9 @@ export interface MonsterData {
   scaleRef: number;
   /** Bounding box in local particle space (pre-scale) */
   bounds: { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number };
-  /** HEADDDS-style mesh eyes — detail view only */
+  /** HEADDDS-style mesh bundle — primary visual */
+  meshBundle?: MeshBundle;
+  /** @deprecated use meshBundle.volumetricEyes */
   volumetricEyes?: VolumetricEyeBundle;
   /** Procedural blob set for mesh skull (same seed variant) */
   blobs?: Blob[];
