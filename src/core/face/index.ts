@@ -1,4 +1,3 @@
-/** boolala.boo face feature module. */
 export { applyFace } from './applyFace';
 export {
   PARTICLE_BUDGET,
@@ -9,6 +8,18 @@ export {
   stripBottomAppendages,
   stripFloatingFaceParticles,
 } from './quality';
+export {
+  auditIntegrity,
+  countEyeLattice,
+  countFloatingBrow,
+  countHairOverEye,
+  countLashInEye,
+  countLidOffEye,
+  countMustacheOnMouth,
+  countOrphanLashEar,
+  sumDefects,
+} from './integrity';
+export type { IntegrityReport } from './integrity';
 export type { FacePreset } from './composition';
 export type {
   AccentStyle,

@@ -86,7 +86,7 @@ export class MonsterView extends ParticleContainer {
 
     this.data = options.data;
     this.displayScale = options.scale ?? 40;
-    this.cellPx = Math.max(2, options.data.cellSize * this.displayScale * 1.18);
+    this.cellPx = Math.max(2, options.data.cellSize * this.displayScale * 1.02);
     this.eventMode = 'static';
     this.cursor = 'pointer';
 
@@ -148,7 +148,7 @@ export class MonsterView extends ParticleContainer {
 
   setDisplayScale(scale: number): void {
     this.displayScale = scale;
-    this.cellPx = Math.max(2, this.data.cellSize * scale * 1.18);
+    this.cellPx = Math.max(2, this.data.cellSize * scale * 1.02);
     this.refreshBounds();
     this.updateHitArea();
   }
@@ -331,9 +331,11 @@ export class MonsterView extends ParticleContainer {
                   ? 1.6
                   : part === 'ear'
                     ? 1.3 + home.tipFactor
-                    : part === 'aura'
-                      ? 1.4
-                      : 1;
+                    : part === 'brow' || part === 'mustache'
+                      ? 0.55
+                      : part === 'aura'
+                        ? 1.4
+                        : 1;
         const strandPhase = (home.hairStrand ?? 0) * 0.4;
         const sway =
           (swayBase +
@@ -353,6 +355,17 @@ export class MonsterView extends ParticleContainer {
           y += Math.cos(t * 2.1 + home.phase) * anim.jiggleAmp * home.tipFactor * 0.6;
         }
 
+        // Living brows / mustache — subtle strand micro-motion
+        if (part === 'brow' || part === 'mustache') {
+          const micro =
+            Math.sin(t * (anim.swayFreq * 1.1) + strandPhase + home.phase) *
+            anim.jiggleAmp *
+            0.35 *
+            (0.5 + home.tipFactor);
+          x += micro;
+          y += Math.cos(t * 1.7 + home.phase) * anim.jiggleAmp * 0.15;
+        }
+
         // Coherent body: only rim / limbs / flecks / hair jiggle independently
         const canJig =
           (home.isRim && part !== 'body') ||
@@ -361,6 +374,8 @@ export class MonsterView extends ParticleContainer {
           part === 'hair' ||
           part === 'lash' ||
           part === 'ear' ||
+          part === 'brow' ||
+          part === 'mustache' ||
           part === 'aura' ||
           home.tipFactor > 0.28;
         if (canJig) {
@@ -407,6 +422,9 @@ export class MonsterView extends ParticleContainer {
 
       let sizeMul = home.size;
       let scaleYMul = 1;
+      // Face cores render at exact cell size — no bleed lattice into sclera
+      const tightFace =
+        part === 'outline' || part === 'eye' || part === 'pupil' || part === 'eyelid';
       const blinkParts =
         part === 'eye' ||
         part === 'pupil' ||
@@ -433,7 +451,8 @@ export class MonsterView extends ParticleContainer {
       }
       sprite.alpha = alpha;
 
-      const px = Math.max(2, this.cellPx * sizeMul);
+      const cellFactor = tightFace ? 1.0 / 1.02 : 1;
+      const px = Math.max(2, this.cellPx * sizeMul * cellFactor);
       sprite.scaleX = px / 16;
       sprite.scaleY = (px / 16) * scaleYMul;
     }

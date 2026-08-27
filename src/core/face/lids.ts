@@ -37,33 +37,41 @@ function paintOneLid(
             ? 0.25
             : 0.15;
 
-  // Upper lid — cover top of eye
+  // Upper lid — ONLY existing eye cells (never empty bbox corners / !cell)
   const upperRows = Math.max(1, Math.floor(eye.h * cover));
   for (let dy = 0; dy < upperRows; dy++) {
     for (let dx = 0; dx < eye.w; dx++) {
       const cell = grid.cells.get(`${eye.x + dx},${eye.y + eye.h - 1 - dy}`);
-      if (cell?.part === 'eye' || cell?.part === 'pupil' || !cell) {
-        putCell(grid, eye.x + dx, eye.y + eye.h - 1 - dy, base, palette.base, 'eyelid', {
+      if (cell?.part !== 'eye') continue; // not pupil, not empty
+      putCell(
+        grid,
+        eye.x + dx,
+        eye.y + eye.h - 1 - dy,
+        base,
+        palette.base,
+        'eyelid',
+        {
           zBoost: 0.052,
           lidRole: 'upper',
           faceSide: eye.side === 0 ? undefined : eye.side,
-        });
-      }
+          allowOverwrite: ['eye'],
+        },
+      );
     }
   }
 
-  // Lower lid
+  // Lower lid — only eye rim cells (1 row), never full-rect stamp
   if (style === 'droopy' || style === 'wide' || style === 'heavy') {
-    const lowerRows = style === 'droopy' ? 2 : 1;
-    for (let dy = 0; dy < lowerRows; dy++) {
-      for (let dx = 0; dx < eye.w; dx++) {
-        putCell(grid, eye.x + dx, eye.y + dy, base, palette.shadow, 'eyelid', {
-          zBoost: 0.051,
-          lidRole: 'lower',
-          faceSide: eye.side === 0 ? undefined : eye.side,
-          size: 0.85,
-        });
-      }
+    for (let dx = 0; dx < eye.w; dx++) {
+      const cell = grid.cells.get(`${eye.x + dx},${eye.y}`);
+      if (cell?.part !== 'eye') continue;
+      putCell(grid, eye.x + dx, eye.y, base, palette.shadow, 'eyelid', {
+        zBoost: 0.051,
+        lidRole: 'lower',
+        faceSide: eye.side === 0 ? undefined : eye.side,
+        size: 0.85,
+        allowOverwrite: ['eye'],
+      });
     }
   }
 }

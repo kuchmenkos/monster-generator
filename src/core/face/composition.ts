@@ -60,7 +60,6 @@ function pickEar(rng: Rng, pool: EarStyle[]): EarStyle {
 }
 
 function pickHair(rng: Rng): HairStyle {
-  // Dense mane bias; bald_patch rare (~5%)
   if (rng.chance(0.05)) return 'bald_patch';
   return rng.pick([
     'afro_puff',
@@ -79,6 +78,23 @@ function pickHair(rng: Rng): HairStyle {
 function pickMustache(rng: Rng, chance: number): MustacheStyle | null {
   if (!rng.chance(chance)) return null;
   return rng.pick(['walrus', 'pencil', 'handlebar', 'stubble', 'fu_manchu'] as MustacheStyle[])!;
+}
+
+function pickPairedShapes(rng: Rng, bias: EyeShape[]): EyeShape[] {
+  const pool: EyeShape[] = [
+    ...bias,
+    'round',
+    'wide',
+    'tall',
+    'sleepy',
+    'droopy',
+    'square',
+    'diamond',
+    'slit',
+  ];
+  const left = rng.pick(pool)!;
+  const right = rng.chance(0.35) ? rng.pick(pool)! : left;
+  return [left, right];
 }
 
 /**
@@ -141,42 +157,42 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
     ? 'odd'
     : bodyArchetype === 'bighead' && rng.chance(0.45)
       ? 'cyclops'
-      : rng.pick(['calm', 'calm', 'cute', 'cute', 'grumpy', 'cyclops'] as FacePreset[]);
+      : rng.pick(['calm', 'calm', 'cute', 'cute', 'grumpy', 'cyclops', 'odd'] as FacePreset[]);
 
   switch (preset) {
     case 'calm':
       return {
         preset,
-        eyeArchetype: 'goggle',
-        eyeShapes: ['round', 'round'],
-        browStyle: 'straight',
-        lidStyle: 'wide',
+        eyeArchetype: rng.chance(0.55) ? 'goggle' : rng.chance(0.5) ? 'masks' : 'cluster',
+        eyeShapes: pickPairedShapes(rng, ['round', 'wide', 'tall', 'sleepy']),
+        browStyle: rng.pick(['straight', 'thin', 'bushy'] as BrowStyle[])!,
+        lidStyle: rng.pick(['wide', 'monolid', 'sleepy_half'] as LidStyle[])!,
         lashStyle: rng.chance(0.55) ? 'fan' : null,
         noseStyle: rng.pick(['button', 'slit', 'bulb'] as NoseStyle[]),
         earStyle: pickEar(rng, ['lobe', 'shell', 'pointy', 'floppy']),
-        mouthStyle: rng.pick(['open-maw', 'open-maw', 'tongue-out'] as MouthStyle[]),
-        toothStyle: rng.pick(['row_even', 'stump', 'gap_grin'] as ToothStyle[]),
+        mouthStyle: rng.pick(['open-maw', 'tiny', 'tongue-out', 'closed-line'] as MouthStyle[])!,
+        toothStyle: rng.pick(['row_even', 'stump', 'gap_grin'] as ToothStyle[])!,
         hairStyle: rng.chance(0.92) ? pickHair(rng) : null,
-        mustacheStyle: pickMustache(rng, 0.6),
+        mustacheStyle: pickMustache(rng, 0.28),
         doBrows: true,
-        doLids: true,
+        doLids: rng.chance(0.85),
         doAccents: rng.chance(0.45),
         weird: false,
       };
     case 'cute':
       return {
         preset,
-        eyeArchetype: 'goggle',
-        eyeShapes: [rng.pick(['round', 'heart', 'wide'] as EyeShape[])!, 'round'],
-        browStyle: 'surprised',
-        lidStyle: 'sleepy_half',
+        eyeArchetype: rng.chance(0.6) ? 'goggle' : 'masks',
+        eyeShapes: pickPairedShapes(rng, ['round', 'heart', 'wide', 'tall']),
+        browStyle: rng.pick(['surprised', 'thin', 'straight'] as BrowStyle[])!,
+        lidStyle: rng.pick(['sleepy_half', 'wide', 'monolid'] as LidStyle[])!,
         lashStyle: rng.pick(['fan', 'clump', 'spike'] as LashStyle[]),
         noseStyle: 'button',
         earStyle: pickEar(rng, ['lobe', 'floppy', 'shell', 'pointy']),
-        mouthStyle: rng.pick(['open-maw', 'tiny', 'tongue-out'] as MouthStyle[]),
-        toothStyle: rng.pick(['buck', 'row_even', 'stump'] as ToothStyle[]),
+        mouthStyle: rng.pick(['open-maw', 'tiny', 'tongue-out'] as MouthStyle[])!,
+        toothStyle: rng.pick(['buck', 'row_even', 'stump'] as ToothStyle[])!,
         hairStyle: rng.chance(0.95) ? pickHair(rng) : null,
-        mustacheStyle: pickMustache(rng, 0.5),
+        mustacheStyle: pickMustache(rng, 0.22),
         doBrows: true,
         doLids: true,
         doAccents: rng.chance(0.55),
@@ -185,17 +201,17 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
     case 'grumpy':
       return {
         preset,
-        eyeArchetype: 'goggle',
-        eyeShapes: ['angry', 'angry'],
-        browStyle: 'angry',
-        lidStyle: 'heavy',
+        eyeArchetype: rng.chance(0.5) ? 'goggle' : 'masks',
+        eyeShapes: pickPairedShapes(rng, ['angry', 'slit', 'droopy', 'square']),
+        browStyle: rng.pick(['angry', 'bushy', 'unibrow'] as BrowStyle[])!,
+        lidStyle: rng.pick(['heavy', 'droopy', 'monolid'] as LidStyle[])!,
         lashStyle: rng.chance(0.35) ? 'spider' : null,
         noseStyle: rng.pick(['beak', 'snout', 'slit'] as NoseStyle[]),
         earStyle: pickEar(rng, ['pointy', 'bat', 'notch', 'shell']),
-        mouthStyle: 'open-maw',
-        toothStyle: rng.pick(['fang_pair', 'shark', 'gold_cap'] as ToothStyle[]),
+        mouthStyle: rng.pick(['open-maw', 'zigzag', 'closed-line'] as MouthStyle[])!,
+        toothStyle: rng.pick(['fang_pair', 'shark', 'gold_cap'] as ToothStyle[])!,
         hairStyle: rng.chance(0.9) ? pickHair(rng) : null,
-        mustacheStyle: pickMustache(rng, 0.8),
+        mustacheStyle: pickMustache(rng, 0.4),
         doBrows: true,
         doLids: true,
         doAccents: rng.chance(0.35),
@@ -205,16 +221,16 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
       return {
         preset,
         eyeArchetype: 'cyclops-giant',
-        eyeShapes: [rng.pick(['round', 'hex', 'diamond'] as EyeShape[])!],
-        browStyle: rng.pick(['unibrow', 'straight', 'bushy'] as BrowStyle[]),
-        lidStyle: rng.pick(['droopy', 'monolid', 'heavy'] as LidStyle[]),
+        eyeShapes: [rng.pick(['round', 'hex', 'diamond', 'tall', 'wide'] as EyeShape[])!],
+        browStyle: rng.pick(['unibrow', 'straight', 'bushy'] as BrowStyle[])!,
+        lidStyle: rng.pick(['droopy', 'monolid', 'heavy', 'wide'] as LidStyle[])!,
         lashStyle: rng.chance(0.4) ? 'lower_only' : null,
         noseStyle: rng.pick(['bulb', 'patch', 'slit'] as NoseStyle[]),
         earStyle: pickEar(rng, ['lobe', 'shell', 'pointy']),
-        mouthStyle: rng.pick(['open-maw', 'open-maw', 'zigzag'] as MouthStyle[]),
-        toothStyle: rng.pick(['row_even', 'fang_pair', 'stump'] as ToothStyle[]),
+        mouthStyle: rng.pick(['open-maw', 'zigzag', 'tongue-out'] as MouthStyle[])!,
+        toothStyle: rng.pick(['row_even', 'fang_pair', 'stump'] as ToothStyle[])!,
         hairStyle: rng.chance(0.88) ? pickHair(rng) : null,
-        mustacheStyle: pickMustache(rng, 0.55),
+        mustacheStyle: pickMustache(rng, 0.3),
         doBrows: true,
         doLids: true,
         doAccents: rng.chance(0.4),
@@ -224,23 +240,26 @@ export function rollFaceRecipe(rng: Rng, bodyArchetype: string): FaceRecipe {
     default:
       return {
         preset: 'odd',
-        eyeArchetype: rng.chance(0.5) ? 'mismatched' : 'goggle',
+        eyeArchetype: rng.chance(0.45)
+          ? 'mismatched'
+          : rng.chance(0.5)
+            ? 'cluster'
+            : 'goggle',
         eyeShapes: [
-          rng.pick(['void', 'hex', 'blob', 'cross'] as EyeShape[])!,
-          rng.pick(['heart', 'triple', 'diamond'] as EyeShape[])!,
+          rng.pick(['void', 'hex', 'blob', 'cross', 'tall', 'diamond'] as EyeShape[])!,
+          rng.pick(['heart', 'triple', 'diamond', 'slit', 'wide'] as EyeShape[])!,
         ],
-        browStyle: rng.pick(['bushy', 'unibrow', 'angry'] as BrowStyle[]),
-        lidStyle: rng.pick(['monolid', 'droopy', 'wide'] as LidStyle[]),
+        browStyle: rng.pick(['bushy', 'unibrow', 'angry', 'thin'] as BrowStyle[])!,
+        lidStyle: rng.pick(['monolid', 'droopy', 'wide', 'heavy'] as LidStyle[])!,
         lashStyle: rng.chance(0.5) ? rng.pick(['spider', 'clump'] as LashStyle[]) : null,
         noseStyle: rng.pick(['beak', 'patch', 'snout'] as NoseStyle[]),
-        // Rare earless odd (~8% of odd ≈ <1% overall)
         earStyle: rng.chance(0.92)
           ? pickEar(rng, ['asymmetric_stub', 'bat', 'floppy', 'notch'])
           : null,
-        mouthStyle: rng.pick(['open-maw', 'zigzag', 'tongue-out'] as MouthStyle[]),
-        toothStyle: rng.pick(['shark', 'gap_grin', 'gold_cap'] as ToothStyle[]),
+        mouthStyle: rng.pick(['open-maw', 'zigzag', 'tongue-out', 'tiny'] as MouthStyle[])!,
+        toothStyle: rng.pick(['shark', 'gap_grin', 'gold_cap'] as ToothStyle[])!,
         hairStyle: rng.chance(0.9) ? pickHair(rng) : null,
-        mustacheStyle: pickMustache(rng, 0.55),
+        mustacheStyle: pickMustache(rng, 0.25),
         doBrows: true,
         doLids: rng.chance(0.75),
         doAccents: rng.chance(0.55),
@@ -262,7 +281,7 @@ export function buildEyeSlots(
 
   if (recipe.eyeArchetype === 'cyclops-giant') {
     const w = Math.max(5, Math.min(9 + eScale, Math.floor(faceW * 0.48)));
-    const h = Math.max(4, Math.floor(w * rng.float(0.8, 1)));
+    const h = Math.max(4, Math.floor(w * rng.float(0.75, 1.05)));
     eyes.push({
       x: midC - Math.floor(w / 2),
       y: eyeBandR - Math.floor(h / 2),
@@ -274,7 +293,7 @@ export function buildEyeSlots(
     return eyes;
   }
 
-  if (recipe.eyeArchetype === 'mismatched' && recipe.weird) {
+  if (recipe.eyeArchetype === 'mismatched') {
     const bigW = rng.int(4, 6 + Math.floor(eScale * 0.4));
     const bigH = rng.int(3, 5);
     const smallW = rng.int(2, 3);
@@ -290,7 +309,7 @@ export function buildEyeSlots(
     });
     eyes.push({
       x: midC + spread - Math.floor(smallW / 2),
-      y: eyeBandR - Math.floor(smallH / 2),
+      y: eyeBandR - Math.floor(smallH / 2) + rng.int(-1, 1),
       w: smallW,
       h: smallH,
       shape: recipe.eyeShapes[1] ?? 'square',
@@ -299,19 +318,72 @@ export function buildEyeSlots(
     return eyes;
   }
 
-  // Default paired goggle — matched sizes, mild Y jitter only when weird
-  const w = Math.max(4, Math.min(7 + eScale, Math.floor(faceW * 0.3)));
-  const h = w;
-  const spread = Math.max(w, Math.floor(faceW * 0.26));
-  const y = eyeBandR - Math.floor(h / 2);
+  if (recipe.eyeArchetype === 'cluster') {
+    // Three small eyes — odd but readable
+    const w = Math.max(2, Math.min(4, Math.floor(faceW * 0.16)));
+    const h = rng.chance(0.5) ? w : Math.max(2, w - 1);
+    const spread = Math.max(w + 1, Math.floor(faceW * 0.22));
+    const y = eyeBandR - Math.floor(h / 2);
+    eyes.push({
+      x: midC - spread - Math.floor(w / 2),
+      y: y + rng.int(0, 1),
+      w,
+      h,
+      shape: recipe.eyeShapes[0] ?? 'round',
+      side: -1,
+    });
+    eyes.push({
+      x: midC - Math.floor(w / 2),
+      y: y + 1,
+      w,
+      h,
+      shape: recipe.eyeShapes[1] ?? recipe.eyeShapes[0] ?? 'round',
+      side: 0,
+    });
+    eyes.push({
+      x: midC + spread - Math.floor(w / 2),
+      y,
+      w,
+      h,
+      shape: recipe.eyeShapes[1] ?? 'round',
+      side: 1,
+    });
+    return eyes;
+  }
+
+  // masks / goggle — varied aspect ratios (not always square round)
+  const baseW = Math.max(3, Math.min(7 + eScale, Math.floor(faceW * 0.28)));
   const sL = recipe.eyeShapes[0] ?? 'round';
   const sR = recipe.eyeShapes[1] ?? sL;
-  eyes.push({ x: midC - spread - Math.floor(w / 2), y, w, h, shape: sL, side: -1 });
+
+  const aspectFor = (shape: EyeShape): { w: number; h: number } => {
+    if (shape === 'tall' || shape === 'slit') return { w: Math.max(3, baseW - 1), h: baseW + 1 };
+    if (shape === 'wide' || shape === 'sleepy' || shape === 'droopy')
+      return { w: baseW + 1, h: Math.max(3, baseW - 1) };
+    if (shape === 'square') return { w: baseW, h: baseW };
+    if (shape === 'heart' || shape === 'diamond') return { w: baseW, h: baseW };
+    return { w: baseW, h: rng.chance(0.4) ? baseW : Math.max(3, baseW + rng.int(-1, 1)) };
+  };
+
+  const left = aspectFor(sL);
+  const right = aspectFor(sR);
+  const spread = Math.max(Math.max(left.w, right.w), Math.floor(faceW * 0.26));
+  const yL = eyeBandR - Math.floor(left.h / 2);
+  const yR = eyeBandR - Math.floor(right.h / 2) + (rng.chance(0.3) ? rng.int(-1, 1) : 0);
+
   eyes.push({
-    x: midC + spread - Math.floor(w / 2),
-    y: recipe.weird ? y + rng.int(-1, 1) : y,
-    w,
-    h,
+    x: midC - spread - Math.floor(left.w / 2),
+    y: yL,
+    w: left.w,
+    h: left.h,
+    shape: sL,
+    side: -1,
+  });
+  eyes.push({
+    x: midC + spread - Math.floor(right.w / 2),
+    y: yR,
+    w: right.w,
+    h: right.h,
     shape: sR,
     side: 1,
   });

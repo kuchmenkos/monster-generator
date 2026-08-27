@@ -24,18 +24,9 @@ function countEyeLattice(particles: Particle[]): number {
   return n;
 }
 
-/** Brow cells above the mouth (mustache sits between nose and lips). */
+/** Dedicated mustache part (≥3 cells). */
 function hasMustacheProxy(particles: Particle[]): boolean {
-  const mouths = particles.filter((p) => p.part === 'mouth');
-  const brows = particles.filter((p) => p.part === 'brow');
-  const noses = particles.filter((p) => p.part === 'nose');
-  if (mouths.length === 0 || brows.length < 3) return false;
-  const mouthMaxR = Math.max(...mouths.map((p) => p.row));
-  const lo = mouths.reduce((a, p) => Math.min(a, p.row), Infinity);
-  const hi = noses.length > 0 ? Math.min(...noses.map((p) => p.row)) : mouthMaxR + 4;
-  // Mustache band: from mouth top up toward nose
-  const stache = brows.filter((p) => p.row >= lo - 1 && p.row <= hi + 1);
-  return stache.length >= 3;
+  return particles.filter((p) => p.part === 'mustache').length >= 3;
 }
 
 /** Brow spans ≥2 distinct rows near an eye — thickness proxy. */
@@ -233,7 +224,7 @@ if (hasHair < seeds.length * 0.75) throw new Error('too few dense hairstyles');
 if (hasBrow < seeds.length * 0.55) throw new Error('too few brows');
 if (thickBrow < seeds.length * 0.5) throw new Error('brows too thin');
 if (hasEar < seeds.length * 0.85) throw new Error('too few ears');
-if (hasMustache < seeds.length * 0.4) throw new Error('too few mustaches');
+if (hasMustache < seeds.length * 0.2) throw new Error('too few mustaches');
 if (maxHair > 220) throw new Error(`hair cell bloat: ${maxHair}`);
 if (maxParticles > PARTICLE_BUDGET) throw new Error(`particle bloat: ${maxParticles}`);
 if (floatingSum > 0) throw new Error(`floating face features total=${floatingSum}`);

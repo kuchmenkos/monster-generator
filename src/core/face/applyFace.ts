@@ -18,8 +18,8 @@ import { paintNose } from './nose';
 import { pruneFloatingFeatures, pruneOrphanFlecks, stripBottomAppendages } from './quality';
 
 /**
- * boolala.boo face pipeline with composition presets:
- * eyes → brows → lids → lashes → nose → mustache → ears → mouth → accents → hair.
+ * boolala.boo face pipeline:
+ * eyes → lids → lashes → brows → nose → mouth → mustache → ears → accents → hair.
  */
 export function applyFace(
   rng: Rng,
@@ -55,16 +55,13 @@ export function applyFace(
 
   const lowestEye = Math.min(...eyes.map((e) => e.y));
 
-  if (recipe.doBrows) paintBrows(grid, rng, palette, eyes, base, recipe.browStyle);
+  // Lids before brows so brows sit on real lids, not empty space
   if (recipe.doLids) paintLids(grid, rng, palette, eyes, base, recipe.lidStyle);
   if (recipe.lashStyle) paintLashes(grid, rng, palette, eyes, base, recipe.lashStyle);
+  if (recipe.doBrows) paintBrows(grid, rng, palette, eyes, base, recipe.browStyle);
 
   if (recipe.noseStyle) {
     paintNose(grid, rng, palette, midC, noseR, base, recipe.noseStyle);
-  }
-
-  if (recipe.earStyle) {
-    paintFacialEars(grid, rng, palette, midC, eyeBandR, faceW, base, recipe.earStyle);
   }
 
   const faceHalf = Math.max(3, Math.floor(faceW * 0.5));
@@ -85,9 +82,13 @@ export function applyFace(
     },
   );
 
-  // Mustache after mouth so lip cavity doesn't erase whiskers
+  // Mustache after mouth — protected write won't clobber lips
   if (recipe.mustacheStyle) {
     paintMustache(grid, rng, palette, midC, noseR, mouthBandR, base, recipe.mustacheStyle);
+  }
+
+  if (recipe.earStyle) {
+    paintFacialEars(grid, rng, palette, midC, eyeBandR, faceW, base, recipe.earStyle);
   }
 
   if (recipe.doAccents) paintAccents(grid, rng, palette, midC, eyeBandR - 1, faceW, faceH, base);

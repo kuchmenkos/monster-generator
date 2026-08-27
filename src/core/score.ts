@@ -1,4 +1,11 @@
 import type { MonsterData, Particle } from './types';
+import {
+  countEyeLattice,
+  countFloatingBrow,
+  countHairOverEye,
+  countLidOffEye,
+  countMustacheOnMouth,
+} from './face/integrity';
 import { countFloatingFaceParticles, PARTICLE_BUDGET } from './face/quality';
 
 const ORTHO: ReadonlyArray<readonly [number, number]> = [
@@ -133,6 +140,7 @@ export function scoreMonster(data: MonsterData): number {
   // boolala.boo face richness
   const noses = data.particles.filter((p) => p.part === 'nose');
   const brows = data.particles.filter((p) => p.part === 'brow');
+  const mustaches = data.particles.filter((p) => p.part === 'mustache');
   const lashes = data.particles.filter((p) => p.part === 'lash');
   const hair = data.particles.filter((p) => p.part === 'hair');
   const freckles = data.particles.filter((p) => p.part === 'freckle');
@@ -140,14 +148,7 @@ export function scoreMonster(data: MonsterData): number {
   if (noses.length > 0) score += 4;
   if (brows.length >= 2) score += 3;
   else if (brows.length === 1) score += 1;
-  // Mustache proxy: dense brow cells in lower face band near mouth
-  const mouthsForBand = data.particles.filter((p) => p.part === 'mouth');
-  if (mouthsForBand.length > 0 && brows.length >= 6) {
-    const mouthMaxR = Math.max(...mouthsForBand.map((p) => p.row));
-    const mouthMinR = Math.min(...mouthsForBand.map((p) => p.row));
-    const stache = brows.filter((p) => p.row <= mouthMaxR + 2 && p.row >= mouthMinR - 3);
-    if (stache.length >= 4) score += 2;
-  }
+  if (mustaches.length >= 3) score += 2;
   if (lashes.length > 0) score += 2;
   if (hair.length >= 8) score += 3;
   else if (hair.length >= 4) score += 1;
@@ -162,6 +163,18 @@ export function scoreMonster(data: MonsterData): number {
   // Floating face features (defects)
   const floatingFace = countFloatingFaceParticles(data.particles);
   if (floatingFace > 0) score -= 15 + Math.min(40, floatingFace);
+
+  // Layer integrity defects
+  const lidOff = countLidOffEye(data.particles);
+  if (lidOff > 0) score -= 20 + Math.min(30, lidOff);
+  const floatBrow = countFloatingBrow(data.particles);
+  if (floatBrow > 0) score -= 20 + Math.min(30, floatBrow);
+  const hairEye = countHairOverEye(data.particles);
+  if (hairEye > 0) score -= 20 + Math.min(30, hairEye);
+  const stacheMouth = countMustacheOnMouth(data.particles);
+  if (stacheMouth > 0) score -= 20 + Math.min(30, stacheMouth);
+  const lattice = countEyeLattice(data.particles);
+  if (lattice > 0) score -= 20 + Math.min(30, lattice);
 
   // Reject extreme particle bloat (lag guard) — hard reject above budget
   if (data.particles.length > PARTICLE_BUDGET) return -1000;

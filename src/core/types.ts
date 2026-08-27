@@ -10,6 +10,7 @@ export type ParticlePart =
   | 'aura'
   | 'fleck'
   | 'brow'
+  | 'mustache'
   | 'eyelid'
   | 'lash'
   | 'hair'

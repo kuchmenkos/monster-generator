@@ -31,19 +31,21 @@ export function paintHair(
   const color = palette.hair;
   const tipColor = lighten(palette.hair, 0.12);
 
-  // Solid crown cap (2–3 rows) so hair reads as a mass, not wiry sticks
+  // Solid crown cap (2–3 rows) — skip eye/pupil/mouth via paintHairCell
   if (style !== 'bald_patch') {
     const capRows = rng.int(2, 3);
     for (const c of crown) {
       for (let dy = 1; dy <= capRows && painted < budget; dy++) {
-        putCell(grid, c.col, c.row + dy, c, dy === capRows ? tipColor : color, 'hair', {
-          zBoost: 0.02 + dy * 0.01,
-          tipFactor: dy / (capRows + 2),
-          hairStrand: 0,
-          size: 1,
-          phase: c.phase,
-        });
-        painted++;
+        paintHairCell(
+          grid,
+          c.col,
+          c.row + dy,
+          c,
+          dy === capRows ? tipColor : color,
+          dy / (capRows + 2),
+          0,
+          () => painted++,
+        );
       }
     }
   }
@@ -119,8 +121,35 @@ function paintHairCell(
   onPaint: () => void,
 ): void {
   const existing = grid.cells.get(cellKey(col, row));
-  if (existing && (existing.part === 'eye' || existing.part === 'pupil' || existing.part === 'mouth')) {
+  if (
+    existing &&
+    (existing.part === 'eye' ||
+      existing.part === 'pupil' ||
+      existing.part === 'mouth' ||
+      existing.part === 'tooth' ||
+      existing.part === 'eyelid')
+  ) {
     return;
+  }
+  // Soft body contact for off-crown tips
+  if (!existing || existing.part !== 'hair') {
+    const onBody = existing?.part === 'body';
+    if (!onBody) {
+      let near = false;
+      for (const [dc, dr] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nb = grid.cells.get(cellKey(col + dc, row + dr));
+        if (nb && (nb.part === 'body' || nb.part === 'hair' || nb.part === 'appendage')) {
+          near = true;
+          break;
+        }
+      }
+      if (!near && tip < 0.35) return;
+    }
   }
   // Allow hair-on-hair overlap (thickens mane)
   putCell(grid, col, row, start, color, 'hair', {

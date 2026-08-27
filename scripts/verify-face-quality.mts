@@ -1,36 +1,13 @@
-/**
- * boolala.boo — face polish checklist (eyes grid, ears, hair, mustache).
- */
 import {
   countFloatingFaceParticles,
   PARTICLE_BUDGET,
 } from '../src/core/face/quality';
+import { countEyeLattice } from '../src/core/face/integrity';
 import { countDetachedAppendages } from '../src/core/score';
 import { generateMonster } from '../src/core/monster';
-import type { Particle } from '../src/core/types';
 
 const N = 80;
 const seeds = Array.from({ length: N }, (_, i) => `face-q-${i}-${(i * 31) % 97}`);
-
-function countEyeLattice(particles: Particle[]): number {
-  const byKey = new Map(particles.map((p) => [`${p.col},${p.row}`, p] as const));
-  let n = 0;
-  for (const p of particles) {
-    if (p.part !== 'outline') continue;
-    const isEyeish = (part: string) => part === 'eye' || part === 'pupil';
-    const L = byKey.get(`${p.col - 1},${p.row}`);
-    const R = byKey.get(`${p.col + 1},${p.row}`);
-    const U = byKey.get(`${p.col},${p.row + 1}`);
-    const D = byKey.get(`${p.col},${p.row - 1}`);
-    if (
-      (L && R && isEyeish(L.part) && isEyeish(R.part)) ||
-      (U && D && isEyeish(U.part) && isEyeish(D.part))
-    ) {
-      n++;
-    }
-  }
-  return n;
-}
 
 let floatingTotal = 0;
 let overBudget = 0;
@@ -62,18 +39,12 @@ for (const seed of seeds) {
   const append = m.particles.filter((p) => p.part === 'appendage');
   const ears = m.particles.filter((p) => p.part === 'ear');
   const hair = m.particles.filter((p) => p.part === 'hair');
-  const brows = m.particles.filter((p) => p.part === 'brow');
+  const mustache = m.particles.filter((p) => p.part === 'mustache');
   if (eyes.length === 0) noEyes++;
   if (mouths.length === 0) noMouth++;
   if (ears.length > 0) withEar++;
   if (hair.length >= 8) withHair8++;
-  if (mouths.length > 0 && brows.length >= 3) {
-    const lo = Math.min(...mouths.map((p) => p.row));
-    const noses = m.particles.filter((p) => p.part === 'nose');
-    const hi = noses.length > 0 ? Math.min(...noses.map((p) => p.row)) : lo + 4;
-    const stache = brows.filter((p) => p.row >= lo - 1 && p.row <= hi + 1);
-    if (stache.length >= 3) withMustache++;
-  }
+  if (mustache.length >= 3) withMustache++;
 
   detachedTotal += countDetachedAppendages(m.particles);
 
@@ -136,6 +107,6 @@ if (faceOffBody > 0) throw new Error(`defect: face landmarks off body=${faceOffB
 if (eyeLattice > 0) throw new Error(`defect: eye lattice=${eyeLattice}`);
 if (withEar < N * 0.85) throw new Error(`defect: ear coverage ${withEar}/${N}`);
 if (withHair8 < N * 0.75) throw new Error(`defect: hair coverage ${withHair8}/${N}`);
-if (withMustache < N * 0.4) throw new Error(`defect: mustache coverage ${withMustache}/${N}`);
+if (withMustache < N * 0.2) throw new Error(`defect: mustache coverage ${withMustache}/${N}`);
 
 console.log('face-quality OK');

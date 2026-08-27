@@ -2,6 +2,14 @@ import { darken, lighten } from '../palette';
 import type { GridCell, LidRole, MonsterGrid, MouthRole, ParticlePart } from '../types';
 import { cellKey } from '../types';
 
+/** Core face parts that must not be clobbered by decorative features. */
+const PROTECTED_PARTS: ReadonlySet<ParticlePart> = new Set([
+  'eye',
+  'pupil',
+  'mouth',
+  'tooth',
+]);
+
 export interface PaintOpts {
   zBoost?: number;
   size?: number;
@@ -14,10 +22,14 @@ export interface PaintOpts {
   phase?: number;
   /** Soft: allow 1-cell off body rim */
   soft?: boolean;
+  /** Soft radius for nearBody checks (default 1) */
+  softRadius?: number;
   /** Add cel shadow cell down-right */
   shadow?: boolean;
   /** Add highlight cell up-left for larger features */
   highlight?: boolean;
+  /** Allow overwriting these protected parts (e.g. eyelid over eye) */
+  allowOverwrite?: ParticlePart[];
 }
 
 export function bodyOnly(grid: MonsterGrid): GridCell[] {
@@ -39,7 +51,6 @@ export function nearBody(
     for (let dc = -r; dc <= r; dc++) {
       if (Math.abs(dc) + Math.abs(dr) > r || (dc === 0 && dr === 0)) continue;
       if (grid.cells.get(cellKey(col + dc, row + dr))?.part === 'body') return true;
-      // Also accept appendage/ear stalk as bridge for tip growth
       const nb = grid.cells.get(cellKey(col + dc, row + dr));
       if (nb && (nb.part === 'appendage' || nb.part === 'ear')) return true;
     }
@@ -47,10 +58,32 @@ export function nearBody(
   return false;
 }
 
-/** Allow paint on body OR existing face parts (for layered features). */
-export function nearFaceSurface(grid: MonsterGrid, col: number, row: number, soft = true): boolean {
+/**
+ * Allow paint on body OR existing face parts (for layered features).
+ * Eye/pupil alone are NOT enough surface for brow/mustache/lash — those need body contact.
+ */
+export function nearFaceSurface(
+  grid: MonsterGrid,
+  col: number,
+  row: number,
+  soft = true,
+  forPart?: ParticlePart,
+): boolean {
   const c = grid.cells.get(cellKey(col, row));
-  if (c && c.part !== 'aura') return true;
+  if (c) {
+    if (c.part === 'aura') {
+      /* fall through */
+    } else if (
+      forPart === 'brow' ||
+      forPart === 'mustache' ||
+      forPart === 'lash'
+    ) {
+      // Don't treat bare eye/pupil as a place to stamp brows/lashes
+      if (c.part !== 'eye' && c.part !== 'pupil') return true;
+    } else {
+      return true;
+    }
+  }
   return nearBody(grid, col, row, soft);
 }
 
@@ -64,6 +97,15 @@ export function putCell(
   opts: PaintOpts = {},
 ): void {
   const key = cellKey(col, row);
+  const existing = grid.cells.get(key);
+  if (existing && PROTECTED_PARTS.has(existing.part)) {
+    const allow = opts.allowOverwrite ?? [];
+    if (!allow.includes(existing.part)) {
+      // Protected cores may overwrite each other (pupil→eye, tooth→mouth)
+      if (!PROTECTED_PARTS.has(part)) return;
+    }
+  }
+
   grid.cells.set(key, {
     col,
     row,
@@ -100,9 +142,14 @@ export function paintWithShadow(
   opts: PaintOpts = {},
 ): boolean {
   const soft = opts.soft ?? false;
-  if (!nearFaceSurface(grid, col, row, soft) && part !== 'hair' && part !== 'ear' && part !== 'lash') {
-    // Hair/ears/lashes may grow slightly off body — still require soft contact for others
-    if (!nearBody(grid, col, row, true)) return false;
+  const softRadius = opts.softRadius ?? 1;
+
+  // Hair / ear / lash always need soft body contact — never skip
+  if (part === 'hair' || part === 'ear' || part === 'lash') {
+    const radius = part === 'ear' ? Math.max(2, softRadius) : softRadius;
+    if (!nearBody(grid, col, row, true, radius)) return false;
+  } else if (!nearFaceSurface(grid, col, row, soft, part)) {
+    if (!nearBody(grid, col, row, true, softRadius)) return false;
   }
 
   putCell(grid, col, row, base, fillColor, part, opts);
@@ -115,6 +162,8 @@ export function paintWithShadow(
         ...opts,
         zBoost: (opts.zBoost ?? 0.02) - 0.004,
         size: (opts.size ?? 1) * 0.9,
+        shadow: false,
+        highlight: false,
       });
     }
   }
@@ -127,6 +176,8 @@ export function paintWithShadow(
         ...opts,
         zBoost: (opts.zBoost ?? 0.02) + 0.002,
         size: (opts.size ?? 1) * 0.75,
+        shadow: false,
+        highlight: false,
       });
     }
   }
@@ -157,7 +208,6 @@ export function paintOutlineRing(
     [-1, -1],
   ] as const;
 
-  // Dilate mask by `thick`, then paint only cells in dilate \ mask that touch mask
   const border = new Set<string>();
   for (const key of mask) {
     const [xs, ys] = key.split(',').map(Number) as [number, number];
@@ -171,7 +221,6 @@ export function paintOutlineRing(
 
   for (const key of border) {
     const [xs, ys] = key.split(',').map(Number) as [number, number];
-    // Must be adjacent (ortho) to at least one mask cell — skip deep interior cavities
     let touches = false;
     for (const [dx, dy] of ORTHO) {
       if (mask.has(`${xs + dx},${ys + dy}`)) {

@@ -1,6 +1,7 @@
 import { darken, lighten } from '../palette';
 import type { Rng } from '../rng';
 import type { GridCell, MonsterGrid, MonsterPalette } from '../types';
+import { cellKey } from '../types';
 import { nearBody, paintWithShadow, putCell } from './shading';
 import type { EarStyle } from './types';
 
@@ -30,10 +31,29 @@ export function paintFacialEars(
         ? (rng.pick(['lobe', 'pointy', 'floppy', 'notch', 'bat', 'shell'] as EarStyle[]) as EarStyle)
         : leftStyle;
 
-  // Anchor past rim so ears stick out
   const half = Math.max(3, Math.floor(faceW * 0.5)) + rng.int(1, 2);
   paintOneEar(grid, rng, palette, midC - half, eyeY, -1, base, leftStyle);
   paintOneEar(grid, rng, palette, midC + half, eyeY + rng.int(-1, 1), 1, base, rightStyle);
+}
+
+function nearestBodyColor(
+  grid: MonsterGrid,
+  col: number,
+  row: number,
+  fallback: number,
+): number {
+  const self = grid.cells.get(cellKey(col, row));
+  if (self?.part === 'body') return self.color;
+  for (let r = 1; r <= 3; r++) {
+    for (let dr = -r; dr <= r; dr++) {
+      for (let dc = -r; dc <= r; dc++) {
+        if (Math.abs(dc) + Math.abs(dr) !== r) continue;
+        const nb = grid.cells.get(cellKey(col + dc, row + dr));
+        if (nb?.part === 'body') return nb.color;
+      }
+    }
+  }
+  return fallback;
 }
 
 function paintOneEar(
@@ -46,7 +66,8 @@ function paintOneEar(
   base: GridCell,
   style: EarStyle,
 ): void {
-  const color = lighten(palette.base, 0.12);
+  const bodyTint = nearestBodyColor(grid, anchorC - side, anchorR, palette.base);
+  const color = lighten(bodyTint, 0.08);
   const outline = darken(palette.outline, 0.05);
   const tip = palette.accent;
 
@@ -63,21 +84,22 @@ function paintOneEar(
   const paint = (dc: number, dr: number, tipF = 0, accent = false) => {
     const col = anchorC + dc;
     const row = anchorR + dr;
-    // Soft radius 2 so tips can protrude
     if (!nearBody(grid, col, row, true, 2) && tipF < 0.25) return;
-    paintWithShadow(grid, col, row, base, accent ? tip : color, 'ear', {
+    const useAccent = accent && tipF > 0.7;
+    paintWithShadow(grid, col, row, base, useAccent ? tip : color, 'ear', {
       zBoost: 0.035,
       soft: true,
+      softRadius: 2,
       tipFactor: tipF,
       faceSide: side,
       shadow: tipF > 0.55,
       size: 1,
     });
-    // Outline rim on outer tip for contrast
     if (tipF > 0.55) {
       paintWithShadow(grid, col + side, row, base, outline, 'ear', {
         zBoost: 0.032,
         soft: true,
+        softRadius: 2,
         tipFactor: Math.min(1, tipF + 0.1),
         faceSide: side,
         size: 0.9,

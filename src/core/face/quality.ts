@@ -8,6 +8,7 @@ const FACE_PARTS: ReadonlySet<ParticlePart> = new Set([
   'tooth',
   'outline',
   'brow',
+  'mustache',
   'eyelid',
   'lash',
   'nose',
@@ -157,6 +158,7 @@ export function enforceParticleBudget(particles: Particle[], max = PARTICLE_BUDG
     p.part === 'tooth' ||
     p.part === 'nose' ||
     p.part === 'brow' ||
+    p.part === 'mustache' ||
     p.part === 'eyelid';
 
   let out = particles;

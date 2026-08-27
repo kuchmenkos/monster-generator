@@ -41,7 +41,9 @@ export function paintEyeShaped(
     }
   };
 
-  paintOutlineRing(grid, originCol, originRow, mask, base, palette.outline, Math.min(1, ringThick));
+  // Outline thick always 1 — thicker rings create lattice bleed into sclera
+  paintOutlineRing(grid, originCol, originRow, mask, base, palette.outline, 1);
+  void ringThick;
   // Fill after outline so sclera always wins over any stray outline
   fillSclera();
   // Repair: any outline sandwiched by eye cells → sclera (kills lattice)
@@ -174,9 +176,18 @@ function repairOutlineLattice(
       const R = grid.cells.get(cellKey(col + 1, row));
       const U = grid.cells.get(cellKey(col, row + 1));
       const D = grid.cells.get(cellKey(col, row - 1));
+      const NE = grid.cells.get(cellKey(col + 1, row + 1));
+      const SW = grid.cells.get(cellKey(col - 1, row - 1));
+      const NW = grid.cells.get(cellKey(col - 1, row + 1));
+      const SE = grid.cells.get(cellKey(col + 1, row - 1));
       const eyeish = (c: GridCell | undefined) =>
         !!c && (c.part === 'eye' || c.part === 'pupil');
-      if ((eyeish(L) && eyeish(R)) || (eyeish(U) && eyeish(D))) {
+      if (
+        (eyeish(L) && eyeish(R)) ||
+        (eyeish(U) && eyeish(D)) ||
+        (eyeish(NE) && eyeish(SW)) ||
+        (eyeish(NW) && eyeish(SE))
+      ) {
         const fill = shape === 'void' ? darken(palette.pupil, 0.1) : palette.eyeWhite;
         putCell(grid, col, row, base, fill, 'eye', {
           zBoost: 0.04,
