@@ -117,6 +117,13 @@ export function scoreMonster(data: MonsterData): number {
   else score += 6;
   if (mouths.some((p) => p.mouthRole === 'cavity')) score += 4;
 
+  // Soft bonuses — nose / tooth variety / chunky limbs (no new hard rejects)
+  const noses = data.particles.filter((p) => p.part === 'nose');
+  if (noses.length >= 2) score += 4;
+  const teeth = data.particles.filter((p) => p.part === 'tooth');
+  if (teeth.length >= 4) score += 3;
+  if (teeth.length >= 8) score += 2;
+
   // Pupil within range metadata
   for (const pu of pupils) {
     if (pu.pupilRange && pu.pupilRange.x > 0) score += 1;
@@ -128,12 +135,22 @@ export function scoreMonster(data: MonsterData): number {
   if (limbs.length >= 8) score += 10;
   else if (limbs.length >= 3) score += 4;
   else score -= 6;
+  // Chunky limb bonus (many appendage cells ≈ thicker paths)
+  if (limbs.length >= 40 && limbs.length <= 350) score += 4;
   if (flecks.length >= 4) score += 4;
 
   // Prefer non-boxy archetypes slightly
   if (data.archetype === 'column' || data.archetype === 'wide' || data.archetype === 'stack') score -= 40;
   if (data.archetype === 'lanky' || data.archetype === 'bighead' || data.archetype === 'pear') {
     score += 3;
+  }
+  if (
+    data.archetype === 'peanut' ||
+    data.archetype === 'lobed' ||
+    data.archetype === 'crescent' ||
+    data.archetype === 'vase'
+  ) {
+    score += 2;
   }
   if (data.archetype === 'slug') score -= 4;
 

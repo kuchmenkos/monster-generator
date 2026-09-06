@@ -6,14 +6,21 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.mjs",
+    "format:bulala": "prettier --write src/bulala vite-plugins/bulala-voice.ts tests/*.test.mjs"
   },
   "devDependencies": {
+    "@types/three": "^0.185.4",
+    "esbuild": "^0.28.2",
     "playwright": "^1.62.1",
+    "prettier": "^3.9.6",
     "typescript": "~5.8.3",
     "vite": "^6.3.5"
   },
   "dependencies": {
-    "pixi.js": "^8.20.0"
+    "lucide": "^1.41.0",
+    "pixi.js": "^8.20.0",
+    "three": "^0.185.1"
   }
 }

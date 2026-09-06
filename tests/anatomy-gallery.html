@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>Булала · проверка анатомии</title
+  ><style>
+    body {
+      margin: 24px;
+      background: #f4f1eb;
+      color: #37352f;
+      font: 16px system-ui;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      background: #f4f1eb;
+      padding: 12px;
+      z-index: 1;
+    }
+    select {
+      font: inherit;
+      padding: 8px;
+    }
+    main {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    article {
+      background: #fffaf3;
+      padding: 12px;
+      border-radius: 18px;
+    }
+    img {
+      width: 50%;
+    }
+    h2 {
+      font-size: 16px;
+      margin: 6px;
+    }
+    @media (max-width: 600px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+  <header>
+    Анатомия · гладкая голова
+    <select aria-label="Категория">
+      <option value="nose">Носы</option>
+      <option value="ears">Уши</option>
+      <option value="horns">Рога</option>
+      <option value="tail">Хвосты</option>
+      <option value="pupil">Зрачки</option>
+    </select>
+    <span id="status"></span>
+  </header>
+  <main></main>
+  <script type="module" src="./anatomy-gallery.ts"></script>
+</html>

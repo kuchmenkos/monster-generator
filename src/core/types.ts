@@ -6,6 +6,7 @@ export type ParticlePart =
   | 'pupil'
   | 'mouth'
   | 'tooth'
+  | 'nose'
   | 'outline'
   | 'aura'
   | 'fleck';
@@ -106,6 +107,8 @@ export interface MonsterPalette {
   /** Secondary accent — extra coat color / glow */
   accent2: number;
   mouth: number;
+  /** Lip rim — slightly distinct from cavity */
+  lip: number;
   eyeWhite: number;
   pupil: number;
 }
@@ -121,15 +124,108 @@ export interface Blob {
   kind: 'body' | 'appendage';
 }
 
+/** Core temperament — drives speech packs and anim bias. */
+export type PersonalityVibe =
+  | 'cheerful'
+  | 'grumpy'
+  | 'anxious'
+  | 'smug'
+  | 'naive'
+  | 'fierce'
+  | 'sleepy'
+  | 'dramatic';
+
+/** Discrete flavor tag — audible in word choice. */
+export type PersonalityQuirk =
+  | 'alwaysHungry'
+  | 'nameDropper'
+  | 'whispers'
+  | 'yells'
+  | 'philosopher'
+  | 'giggler'
+  | 'complainer'
+  | 'poet'
+  | 'glitchTalk'
+  | 'softie'
+  | 'toughGuy'
+  | 'echoes';
+
+export interface VoiceHints {
+  /** Relative TTS pitch bias ~ -1..1 */
+  pitch: number;
+  /** Speech rate bias ~ 0.7..1.4 */
+  rate: number;
+  /** Energy / volume feel 0..1 */
+  energy: number;
+  pauseStyle: 'short' | 'normal' | 'long' | 'stutter';
+}
+
+/** Respeecher sampling overrides (optional until TTS demo fills them). */
+export interface SamplingParams {
+  temperature?: number;
+  top_p?: number;
+  repetition_penalty?: number;
+  seed?: number;
+}
+
+export interface VoiceProfile extends VoiceHints {
+  voiceId?: string;
+  fxPresetId?: string;
+  sampling?: SamplingParams;
+}
+
+export interface MonsterPersonality {
+  vibe: PersonalityVibe;
+  energy: number;
+  warmth: number;
+  boldness: number;
+  verbosity: number;
+  quirk: PersonalityQuirk;
+  voice: VoiceProfile;
+  /** Short UA label, e.g. «сонний драматик» */
+  label: string;
+}
+
+/** Catalog trait used in TTS demo (strength / weakness / speech style / fx). */
+export interface Trait {
+  id: string;
+  label: string;
+  labelUk: string;
+  description: string;
+}
+
+export type VoiceFxPresetId =
+  | 'deepCave'
+  | 'chipmunkInverse'
+  | 'underwater'
+  | 'radioStatic'
+  | 'demonGrowl'
+  | 'echoHall'
+  | 'telephone'
+  | 'bitcrushed'
+  | 'reverseReverbTail'
+  | 'megaphone'
+  | 'hollowPipe'
+  | 'wetMouth'
+  | 'rustyRobot'
+  | 'windTunnel'
+  | 'cathedral'
+  | 'vinylCrackle'
+  | 'phaseShift'
+  | 'subBassBoost'
+  | 'nasalPinch'
+  | 'alienChorus';
+
 export interface MonsterData {
   seed: string;
-  /** Deterministic silly Ukrainian name from seed */
+  /** Deterministic rap stage name from seed */
   name: string;
   /** Body archetype used for limbs/face tuning */
   archetype: string;
   particles: Particle[];
   palette: MonsterPalette;
   anim: AnimParams;
+  personality: MonsterPersonality;
   /** World size of one particle cell (for crisp rendering) */
   cellSize: number;
   /** Feature scale vs baseline resolution 28 */

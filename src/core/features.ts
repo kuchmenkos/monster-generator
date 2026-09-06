@@ -18,6 +18,8 @@ type EyeShape =
 type EyeArchetype = 'masks' | 'goggle' | 'cyclops-giant' | 'cluster' | 'mismatched';
 type MouthStyle = 'closed-line' | 'zigzag' | 'open-maw' | 'tongue-out' | 'tiny';
 type LipCurveKind = 'smile' | 'scowl' | 'wave' | 'skew' | 'flat';
+type NoseKind = 'button' | 'snout' | 'hook' | 'pig' | 'beak';
+type ToothKind = 'fang' | 'square' | 'tusk';
 
 function put(
   grid: MonsterGrid,
@@ -299,6 +301,132 @@ function creamTooth(palette: MonsterPalette): number {
   return lighten(darken(palette.eyeWhite, 0.08), 0.05) || 0xf2e6c8;
 }
 
+/** Paint one tooth into cavity — fang / square / tusk shapes. */
+function paintOneTooth(
+  grid: MonsterGrid,
+  midC: number,
+  lip: number,
+  dx: number,
+  fromUpper: boolean,
+  openUp: number,
+  openDown: number,
+  kind: ToothKind,
+  h: number,
+  base: GridCell,
+  tooth: number,
+): void {
+  const role: MouthRole = fromUpper ? 'upper' : 'lower';
+  const top = lip + openUp;
+  const bot = lip - openDown;
+  const open = openUp + openDown > 0;
+  for (let i = 1; i <= h; i++) {
+    let half = 0;
+    if (kind === 'fang') {
+      half = i === h ? 0 : i === 1 && h >= 2 ? 1 : 0;
+    } else if (kind === 'square') {
+      half = i < h ? 1 : 0;
+    } else {
+      half = i <= Math.ceil(h * 0.45) ? 1 : 0;
+    }
+    for (let tdx = -half; tdx <= half; tdx++) {
+      const row = fromUpper ? lip + openUp - i : lip - openDown + i;
+      if (open) {
+        if (row > bot && row < top) {
+          putMouth(grid, midC + dx + tdx, row, base, tooth, 'tooth', role, false);
+        }
+      } else {
+        putMouth(grid, midC + dx + tdx, row, base, tooth, 'tooth', role, true);
+      }
+    }
+  }
+}
+
+/**
+ * Volumetric nose between eyes and mouth. Returns lowest nose row (or null if none).
+ */
+function paintNose(
+  grid: MonsterGrid,
+  rng: Rng,
+  palette: MonsterPalette,
+  midC: number,
+  midR: number,
+  faceW: number,
+  base: GridCell,
+  lowestEye: number,
+): number | null {
+  // 40% chance — rest keep face as before (no nose)
+  if (!rng.chance(0.4)) return null;
+
+  const kind = rng.pick<NoseKind>(['button', 'snout', 'snout', 'hook', 'pig']);
+  // Beak is rare among noses
+  const finalKind: NoseKind = rng.chance(0.12) ? 'beak' : kind;
+  const noseColor = darken(palette.base, rng.float(0.05, 0.18));
+  const nostril = darken(palette.shadow, 0.1);
+  // Sit below eyes, above mouth band
+  let cy = Math.min(midR + rng.int(-1, 1), lowestEye - 1);
+  if (cy >= lowestEye) cy = lowestEye - 1;
+  const cx = midC + rng.int(-1, 1);
+
+  const putNose = (col: number, row: number, color: number, zBoost = 0.055) => {
+    if (!nearBody(grid, col, row, true)) return;
+    put(grid, col, row, base, color, 'nose', zBoost, 1);
+  };
+
+  if (finalKind === 'button') {
+    const r = rng.int(1, 2);
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r + 0.2) continue;
+        putNose(cx + dx, cy + dy, noseColor);
+      }
+    }
+    if (rng.chance(0.6)) {
+      putNose(cx - 1, cy - 1, nostril, 0.06);
+      putNose(cx + 1, cy - 1, nostril, 0.06);
+    }
+    return cy - r;
+  }
+
+  if (finalKind === 'snout' || finalKind === 'pig') {
+    const w = Math.max(2, Math.floor(faceW * rng.float(0.12, 0.22)));
+    const h = rng.int(2, 3);
+    for (let dy = 0; dy < h; dy++) {
+      const half = Math.max(1, w - dy);
+      for (let dx = -half; dx <= half; dx++) {
+        putNose(cx + dx, cy - dy, noseColor);
+      }
+    }
+    // Nostrils on tip
+    putNose(cx - 1, cy - h, nostril, 0.06);
+    putNose(cx + 1, cy - h, nostril, 0.06);
+    if (finalKind === 'pig') {
+      putNose(cx, cy - h, lighten(noseColor, 0.12), 0.06);
+    }
+    return cy - h;
+  }
+
+  if (finalKind === 'hook') {
+    const h = rng.int(3, 5);
+    for (let i = 0; i < h; i++) {
+      putNose(cx, cy - i, noseColor);
+      if (i > 1) putNose(cx + (rng.chance(0.5) ? 1 : -1), cy - i, noseColor);
+    }
+    putNose(cx + 1, cy - h, noseColor, 0.06);
+    putNose(cx + 1, cy - h - 1, darken(noseColor, 0.1), 0.06);
+    return cy - h - 1;
+  }
+
+  // beak — rare pointed wedge
+  const h = rng.int(3, 5);
+  for (let i = 0; i < h; i++) {
+    const half = Math.max(0, Math.floor((h - i) * 0.5));
+    for (let dx = -half; dx <= half; dx++) {
+      putNose(cx + dx, cy - i, darken(palette.accent, 0.1));
+    }
+  }
+  return cy - h;
+}
+
 /**
  * Mouth from lip curve. Styles guarantee dark cavity dominates over teeth.
  */
@@ -312,30 +440,37 @@ function paintMouthFromCurve(
   base: GridCell,
   faceH: number,
   lowestEyeRow: number,
+  noseBottom: number | null,
 ): void {
   const sr = grid.scaleRef;
-  const style = rng.pick<MouthStyle>([
-    'closed-line',
-    'closed-line',
-    'zigzag',
-    'zigzag',
-    'open-maw',
-    'open-maw',
-    'open-maw',
-    'open-maw',
-    'tongue-out',
-    'tiny',
-  ]);
+  // ~20% mega-maw bias toward huge open cavity
+  const megaMaw = rng.chance(0.2);
+  const style = megaMaw
+    ? 'open-maw'
+    : rng.pick<MouthStyle>([
+        'closed-line',
+        'closed-line',
+        'zigzag',
+        'zigzag',
+        'open-maw',
+        'open-maw',
+        'open-maw',
+        'open-maw',
+        'tongue-out',
+        'tiny',
+      ]);
 
+  const lipColor = palette.lip ?? darken(palette.mouth, 0.05);
   const mouthColor = darken(palette.mouth, 0.2);
   const cavityColor = darken(palette.mouth, 0.45);
   const tooth = creamTooth(palette);
+  const thickLips = rng.chance(0.4);
   const curve = rng.pick<LipCurveKind>(['smile', 'scowl', 'wave', 'skew', 'flat']);
   const amp = rng.float(0.8, 2.4) * Math.max(1, sr * 0.5);
   const skew = rng.float(-1.2, 1.2);
 
-  // Keep mouth below eyes with ≥2 cell gap
-  const maxMouthTop = lowestEyeRow - 2;
+  // Keep mouth below eyes (and nose if present) with ≥2 cell gap
+  const maxMouthTop = Math.min(lowestEyeRow - 2, noseBottom != null ? noseBottom - 1 : Infinity);
   let lipMid = Math.min(midR, maxMouthTop - 1);
   if (lipMid < midR - Math.floor(faceH * 0.35)) {
     lipMid = Math.max(midR - Math.floor(faceH * 0.2), maxMouthTop - 2);
@@ -357,14 +492,13 @@ function paintMouthFromCurve(
           cx + dx,
           cy + dy,
           base,
-          dy === 0 ? cavityColor : mouthColor,
+          dy === 0 ? cavityColor : thickLips ? lipColor : mouthColor,
           'mouth',
           role,
           true,
         );
       }
     }
-    // Soft outline along rim
     for (let dx = -rw - 1; dx <= rw + 1; dx++) {
       putMouth(grid, cx + dx, cy + rh + 1, base, palette.outline, 'outline', 'upper', true);
       putMouth(grid, cx + dx, cy - rh - 1, base, palette.outline, 'outline', 'lower', true);
@@ -372,11 +506,12 @@ function paintMouthFromCurve(
     return;
   }
 
-  // Width 30–55% of face → half = 15–27.5% of faceW (halfW param = faceW/2)
   const faceWApprox = halfW * 2;
   const W = Math.max(
     2,
-    Math.floor(faceWApprox * rng.float(0.15, 0.275)),
+    Math.floor(
+      faceWApprox * (megaMaw ? rng.float(0.28, 0.42) : rng.float(0.15, 0.275)),
+    ),
   );
 
   let openUp = 0;
@@ -389,19 +524,20 @@ function paintMouthFromCurve(
     openDown = 0;
   } else if (style === 'open-maw') {
     const open = Math.max(
-      3,
-      Math.min(Math.floor(faceH * rng.float(0.25, 0.42)), Math.round(rng.float(4, 9) * sr * 0.5)),
+      megaMaw ? 5 : 3,
+      Math.min(
+        Math.floor(faceH * (megaMaw ? rng.float(0.38, 0.52) : rng.float(0.25, 0.42))),
+        Math.round(rng.float(megaMaw ? 6 : 4, megaMaw ? 12 : 9) * sr * 0.5),
+      ),
     );
     openUp = Math.floor(open * 0.35);
     openDown = open - openUp;
   } else {
-    // tongue-out — smaller maw
     const open = Math.max(2, Math.round(rng.float(2, 4) * sr * 0.55));
     openUp = Math.floor(open * 0.3);
     openDown = open - openUp;
   }
 
-  // Ensure mouth top stays under eyes
   while (lipMid + openUp >= maxMouthTop && lipMid > 2) lipMid--;
 
   const lipRows: number[] = [];
@@ -410,21 +546,25 @@ function paintMouthFromCurve(
     lipRows[dx + W] = lipRowAt(lipMid, t, curve, amp, skew);
   }
 
-  // Paint cavity + lips along curve
+  const rimColor = thickLips ? lipColor : mouthColor;
+
   for (let dx = -W; dx <= W; dx++) {
     const lip = lipRows[dx + W]!;
 
     if (style === 'closed-line' || style === 'zigzag') {
-      // 1–2 cell thick dark line along curve
-      putMouth(grid, midC + dx, lip, base, mouthColor, 'mouth', 'cavity', true);
+      putMouth(grid, midC + dx, lip, base, thickLips ? lipColor : mouthColor, 'mouth', 'cavity', true);
       if (rng.chance(0.55) || Math.abs(dx) < W * 0.7) {
         putMouth(grid, midC + dx, lip - 1, base, cavityColor, 'mouth', 'lower', true);
       }
-      putMouth(grid, midC + dx, lip + 1, base, palette.outline, 'outline', 'upper', true);
+      if (thickLips) {
+        putMouth(grid, midC + dx, lip + 1, base, lipColor, 'mouth', 'upper', true);
+        putMouth(grid, midC + dx, lip + 2, base, palette.outline, 'outline', 'upper', true);
+      } else {
+        putMouth(grid, midC + dx, lip + 1, base, palette.outline, 'outline', 'upper', true);
+      }
       continue;
     }
 
-    // Open styles: elliptical taper at ends so cavity isn't a rectangle
     const nx = W === 0 ? 0 : dx / W;
     const taper = Math.sqrt(Math.max(0, 1 - nx * nx * 0.85));
     const localUp = Math.max(0, Math.round(openUp * taper));
@@ -432,8 +572,14 @@ function paintMouthFromCurve(
     const top = lip + localUp;
     const bot = lip - localDown;
 
-    putMouth(grid, midC + dx, top, base, mouthColor, 'mouth', 'upper', true);
-    putMouth(grid, midC + dx, bot, base, mouthColor, 'mouth', 'lower', true);
+    putMouth(grid, midC + dx, top, base, rimColor, 'mouth', 'upper', true);
+    if (thickLips) {
+      putMouth(grid, midC + dx, top - 1, base, lipColor, 'mouth', 'upper', true);
+    }
+    putMouth(grid, midC + dx, bot, base, rimColor, 'mouth', 'lower', true);
+    if (thickLips) {
+      putMouth(grid, midC + dx, bot + 1, base, lipColor, 'mouth', 'lower', true);
+    }
     for (let r = bot + 1; r < top; r++) {
       putMouth(grid, midC + dx, r, base, cavityColor, 'mouth', 'cavity', false);
     }
@@ -441,7 +587,6 @@ function paintMouthFromCurve(
     putMouth(grid, midC + dx, bot - 1, base, palette.outline, 'outline', 'lower', true);
   }
 
-  // Side corners outline
   if (style !== 'closed-line' && style !== 'zigzag') {
     const leftLip = lipRows[0]!;
     const rightLip = lipRows[W * 2]!;
@@ -449,67 +594,73 @@ function paintMouthFromCurve(
     putMouth(grid, midC + W + 1, rightLip, base, palette.outline, 'outline', 'cavity', true);
   }
 
+  // Per-tooth catalog — mix fang / square / tusk, uneven heights & gaps
+  const toothMix = rng.chance(0.65);
+  const pickKind = (): ToothKind =>
+    toothMix
+      ? rng.pick(['fang', 'fang', 'square', 'tusk'])
+      : rng.pick(['fang', 'square', 'tusk']);
+
   if (style === 'zigzag') {
-    // Sparse alternating fangs — keep dark lip dominant
     let up = true;
-    for (let dx = -W + 1; dx <= W - 1; dx += rng.int(3, 4)) {
-      const lip = lipRows[dx + W]!;
-      const h = rng.pick([1, 1, 2]);
-      for (let i = 1; i <= h; i++) {
-        const row = up ? lip + i : lip - i;
-        const role: MouthRole = up ? 'upper' : 'lower';
-        putMouth(grid, midC + dx, row, base, tooth, 'tooth', role, true);
-        if (i < h) {
-          // slight base flare only on taller fangs
-          putMouth(grid, midC + dx - 1, up ? lip + 1 : lip - 1, base, tooth, 'tooth', role, true);
-          putMouth(grid, midC + dx + 1, up ? lip + 1 : lip - 1, base, tooth, 'tooth', role, true);
-        }
+    for (let dx = -W + 1; dx <= W - 1; ) {
+      if (rng.chance(0.15)) {
+        dx += rng.int(2, 4);
+        continue;
       }
+      const lip = lipRows[dx + W]!;
+      const kind = pickKind();
+      const h =
+        kind === 'tusk' ? rng.pick([2, 3]) : kind === 'square' ? rng.pick([1, 2]) : rng.pick([1, 1, 2]);
+      paintOneTooth(grid, midC, lip, dx, up, 0, 0, kind, h, base, tooth);
       putMouth(grid, midC + dx, lip, base, cavityColor, 'mouth', 'cavity', true);
       up = !up;
+      dx += rng.int(2, 4);
     }
     return;
   }
 
   if (style === 'open-maw') {
     const cavityH = openUp + openDown;
-    const maxToothH = Math.max(1, Math.floor(cavityH * 0.35));
-    const fromUpper = rng.chance(0.65);
-    const step = rng.int(3, 5);
-    for (let dx = -W + 1; dx <= W - 1; dx += step) {
-      if (rng.chance(0.2)) continue;
-      const lip = lipRows[dx + W]!;
-      const h = rng.int(1, maxToothH);
-      for (let i = 1; i <= h; i++) {
-        // Triangle: wide at gum, tip at end
-        const half = i === h ? 0 : i === 1 && h >= 2 ? 1 : 0;
-        for (let tdx = -half; tdx <= half; tdx++) {
-          const row = fromUpper ? lip + openUp - i : lip - openDown + i;
-          const role: MouthRole = fromUpper ? 'upper' : 'lower';
-          const top = lip + openUp;
-          const bot = lip - openDown;
-          if (row > bot && row < top) {
-            putMouth(grid, midC + dx + tdx, row, base, tooth, 'tooth', role, false);
-          }
+    const maxToothH = Math.max(1, Math.floor(cavityH * (megaMaw ? 0.45 : 0.35)));
+    // Both jaws often — refs show upper+lower irregular dentition
+    const bothJaws = rng.chance(0.7);
+    for (let jaw = 0; jaw < (bothJaws ? 2 : 1); jaw++) {
+      const fromUpper = bothJaws ? jaw === 0 : rng.chance(0.65);
+      let dx = -W + 1;
+      while (dx <= W - 1) {
+        if (rng.chance(0.18)) {
+          dx += rng.int(2, 4);
+          continue;
         }
+        const lip = lipRows[dx + W]!;
+        const kind = pickKind();
+        // Corner tusks longer
+        const nearCorner = Math.abs(dx) > W * 0.55;
+        let h = rng.int(1, maxToothH);
+        if (kind === 'tusk' || nearCorner) h = Math.max(h, Math.min(maxToothH, h + 1));
+        if (kind === 'square') h = Math.min(h, Math.max(1, Math.floor(maxToothH * 0.7)));
+        paintOneTooth(grid, midC, lip, dx, fromUpper, openUp, openDown, kind, h, base, tooth);
+        dx += rng.int(2, kind === 'tusk' ? 5 : 4);
       }
     }
     return;
   }
 
   if (style === 'tongue-out') {
-    // Few upper teeth only
     const cavityH = openUp + openDown;
     const maxToothH = Math.max(1, Math.floor(cavityH * 0.3));
-    for (let dx = -W + 2; dx <= W - 2; dx += 3) {
-      if (rng.chance(0.25)) continue;
-      const lip = lipRows[dx + W]!;
-      const h = rng.int(1, maxToothH);
-      for (let i = 1; i <= h; i++) {
-        putMouth(grid, midC + dx, lip + openUp - i, base, tooth, 'tooth', 'upper', false);
+    for (let dx = -W + 2; dx <= W - 2; ) {
+      if (rng.chance(0.25)) {
+        dx += 3;
+        continue;
       }
+      const lip = lipRows[dx + W]!;
+      const kind = pickKind();
+      const h = rng.int(1, maxToothH);
+      paintOneTooth(grid, midC, lip, dx, true, openUp, openDown, kind, h, base, tooth);
+      dx += rng.int(2, 4);
     }
-    // Tongue hanging below lower lip, tapering
     const tw = Math.max(1, Math.floor(W * 0.35));
     const th = rng.int(2, Math.max(2, Math.round(3 * sr * 0.5)));
     const tipShift = rng.int(-1, 1);
@@ -676,5 +827,67 @@ export function applyFeatures(
 
   // Face half-width for mouth (≈40% of face already in region; use full faceW/2)
   const faceHalf = Math.max(3, Math.floor(faceW * 0.5));
-  paintMouthFromCurve(grid, rng, palette, midC + rng.int(-1, 1), midR - 1, faceHalf, base, faceH, lowestEye);
+  const noseBottom = paintNose(grid, rng, palette, midC, midR, faceW, base, lowestEye);
+  paintMouthFromCurve(
+    grid,
+    rng,
+    palette,
+    midC + rng.int(-1, 1),
+    midR - 1,
+    faceHalf,
+    base,
+    faceH,
+    lowestEye,
+    noseBottom,
+  );
+}
+
+/**
+ * Optional tiny defects (~40%): wart, missing tooth, slight nose nudge.
+ * At most one per creature — keeps characters quirky without noise.
+ */
+export function applyDefects(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): void {
+  if (!rng.chance(0.4)) return;
+
+  const kind = rng.pick(['wart', 'missing-tooth', 'nose-nudge'] as const);
+
+  if (kind === 'wart') {
+    const body = [...grid.cells.values()].filter((c) => c.part === 'body');
+    if (body.length < 10) return;
+    const anchor = body[rng.int(0, body.length - 1)]!;
+    const tint = darken(palette.accent, 0.1);
+    for (const [dc, dr] of [
+      [0, 0],
+      [1, 0],
+      [0, 1],
+      [-1, 0],
+    ] as const) {
+      const col = anchor.col + dc;
+      const row = anchor.row + dr;
+      if (!nearBody(grid, col, row, true)) continue;
+      put(grid, col, row, anchor, tint, 'body', 0.03, rng.float(0.7, 1));
+    }
+    return;
+  }
+
+  if (kind === 'missing-tooth') {
+    const teeth = [...grid.cells.values()].filter((c) => c.part === 'tooth');
+    if (teeth.length < 2) return;
+    const victim = teeth[rng.int(0, teeth.length - 1)]!;
+    grid.cells.delete(cellKey(victim.col, victim.row));
+    return;
+  }
+
+  // nose-nudge: shift nose cells one step sideways if present
+  const noses = [...grid.cells.values()].filter((c) => c.part === 'nose');
+  if (noses.length === 0) return;
+  const dir = rng.chance(0.5) ? 1 : -1;
+  const moved: typeof noses = [];
+  for (const n of noses) {
+    grid.cells.delete(cellKey(n.col, n.row));
+    moved.push({ ...n, col: n.col + dir });
+  }
+  for (const n of moved) {
+    put(grid, n.col, n.row, n, n.color, 'nose', 0.055, n.size);
+  }
 }

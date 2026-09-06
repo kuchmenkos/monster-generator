@@ -293,6 +293,7 @@ export function markRimFlags(grid: MonsterGrid): void {
 
 /**
  * Break boxy edges: wave-erode rim + scatter lumps so silhouette isn't rectangular.
+ * ~30% chance of alternate rim style (cloud / spikes / beads); else classic scallop.
  */
 function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): void {
   const solid = [...grid.cells.values()].filter((c) => isSolidPart(c.part));
@@ -307,8 +308,15 @@ function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): 
   const phase = rng.float(0, Math.PI * 2);
   const freq = rng.float(2.5, 5.5);
 
+  // Default scallop; rare alternate rim textures from sketch sheet
+  type RimStyle = 'scallop' | 'cloud' | 'spikes' | 'beads';
+  const rimStyle: RimStyle = rng.chance(0.3)
+    ? rng.pick(['cloud', 'spikes', 'beads'])
+    : 'scallop';
+
   const rim = rimCells(grid);
-  const erodeFrac = rng.float(0.08, 0.15);
+  const erodeFrac =
+    rimStyle === 'spikes' ? rng.float(0.12, 0.2) : rng.float(0.08, 0.15);
   const erodeN = Math.floor(rim.length * erodeFrac);
   const scored = rim
     .map((c) => {
@@ -319,22 +327,42 @@ function applyOrganicRim(rng: Rng, grid: MonsterGrid, palette: MonsterPalette): 
     .sort((a, b) => b.wave - a.wave);
 
   for (let i = 0; i < erodeN && i < scored.length; i++) {
-    // Prefer high wave peaks for erosion — scalloped edge
     if (scored[i]!.wave < 0.15 && rng.chance(0.5)) continue;
     grid.cells.delete(cellKey(scored[i]!.c.col, scored[i]!.c.row));
   }
 
-  // Add 2–5 organic bumps on rim
-  const bumpN = rng.int(2, 5);
+  // Add organic bumps — style biases size / density
+  const bumpN =
+    rimStyle === 'cloud'
+      ? rng.int(4, 8)
+      : rimStyle === 'beads'
+        ? rng.int(3, 6)
+        : rimStyle === 'spikes'
+          ? rng.int(3, 7)
+          : rng.int(2, 5);
   const freshRim = rimCells(grid);
   for (let b = 0; b < bumpN && freshRim.length > 0; b++) {
     const anchor = freshRim[rng.int(0, freshRim.length - 1)]!;
-    const size = rng.int(2, 5);
+    const size =
+      rimStyle === 'cloud'
+        ? rng.int(3, 6)
+        : rimStyle === 'spikes'
+          ? rng.int(1, 3)
+          : rimStyle === 'beads'
+            ? rng.int(2, 4)
+            : rng.int(2, 5);
     const outC = Math.sign(anchor.col - cx) || (rng.chance(0.5) ? 1 : -1);
     const outR = Math.sign(anchor.row - cy) || 1;
     for (let k = 0; k < size; k++) {
-      const col = anchor.col + outC * rng.int(0, 2) + rng.int(-1, 1);
-      const row = anchor.row + outR * rng.int(0, 2) + rng.int(-1, 1);
+      const spikeStretch = rimStyle === 'spikes' ? k : 0;
+      const col =
+        anchor.col +
+        outC * (rng.int(0, 2) + spikeStretch) +
+        (rimStyle === 'spikes' ? 0 : rng.int(-1, 1));
+      const row =
+        anchor.row +
+        outR * (rng.int(0, 2) + spikeStretch) +
+        (rimStyle === 'spikes' ? 0 : rng.int(-1, 1));
       const key = cellKey(col, row);
       if (grid.cells.has(key)) continue;
       grid.cells.set(key, {
@@ -562,16 +590,16 @@ function applyFlecksAndDrips(rng: Rng, grid: MonsterGrid, palette: MonsterPalett
     }
   }
 
-  // Drips hanging from bottom (~30%), tapering size
-  if (rng.chance(0.3)) {
+  // Underside fringe / drips — more often (refs: tattered hem), still optional
+  if (rng.chance(0.55)) {
     const bottom = rim.filter((c) => {
       const below = grid.cells.get(cellKey(c.col, c.row - 1));
       return !below || !isSolidPart(below.part);
     });
-    const dripN = rng.int(2, 4);
+    const dripN = rng.int(3, 7);
     for (let i = 0; i < dripN && bottom.length > 0; i++) {
       const src = bottom[rng.int(0, bottom.length - 1)]!;
-      const len = rng.int(2, 4);
+      const len = rng.int(2, 5);
       for (let d = 1; d <= len; d++) {
         const key = cellKey(src.col, src.row - d);
         if (grid.cells.has(key)) break;

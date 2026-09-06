@@ -1,4 +1,4 @@
-import { darken } from './palette';
+import { darken, lighten } from './palette';
 import type { Rng } from './rng';
 import type { GridCell, MonsterGrid, MonsterPalette } from './types';
 import { cellKey } from './types';
@@ -46,7 +46,15 @@ function limbTint(palette: MonsterPalette, tip: number): number {
   return darken(palette.base, 0.04 + tip * 0.16);
 }
 
-/** Manhattan walk so a diagonal step never leaves a 4-connected gap. */
+/** Cream/bone tint for claws — reads hard vs soft flesh (pixel-art refs). */
+function boneTint(palette: MonsterPalette): number {
+  return lighten(darken(palette.eyeWhite, 0.12), 0.02) || 0xe8dcc4;
+}
+
+/**
+ * Manhattan walk so a diagonal step never leaves a 4-connected gap.
+ * When thick: ~3 cells near root, taper to 2 at tip.
+ */
 function paintLimbPath(
   grid: MonsterGrid,
   rng: Rng,
@@ -69,6 +77,10 @@ function paintLimbPath(
     put(grid, makeLimbCell(grid, src, c, r, tip, color, rng));
     if (thick) {
       put(grid, makeLimbCell(grid, src, c + side, r, tip * 0.95, color, rng));
+      // Extra flesh near root so limbs read chunky, not wires
+      if (tip < 0.55) {
+        put(grid, makeLimbCell(grid, src, c - side, r, tip * 0.9, color, rng));
+      }
     }
   }
 }
@@ -87,6 +99,7 @@ function paintRoot(
   for (let k = 0; k <= 1; k++) {
     put(grid, makeLimbCell(grid, anchor, inwardCol, inwardRow + k, 0.05, color, rng));
     put(grid, makeLimbCell(grid, anchor, inwardCol + side, inwardRow + k, 0.05, color, rng));
+    put(grid, makeLimbCell(grid, anchor, inwardCol - side, inwardRow + k, 0.05, color, rng));
   }
 }
 
@@ -136,7 +149,7 @@ function paintDigits(
   outDir: -1 | 1,
   color: number,
 ): void {
-  const count = rng.int(2, 3);
+  const count = rng.pick([2, 3, 3]);
   for (let i = 0; i < count; i++) {
     const spread = i - Math.floor((count - 1) / 2);
     if (mode === 'toes') {
@@ -172,9 +185,13 @@ function addLegs(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
 
   const legCount = rng.pick([2, 2, 4, 4, 6]);
   const halfPairs = legCount / 2;
-  const baseLen = s(grid, rng.int(3, 6));
+  // ~25% stubby (hulking) or beads; else normal length
+  const style = rng.chance(0.25) ? rng.pick(['stubby', 'beads'] as const) : 'normal';
+  const baseLen =
+    style === 'stubby' ? s(grid, rng.int(2, 3)) : s(grid, rng.int(3, 6));
   const thick = true;
   const clawCount = rng.int(2, 3);
+  const clawBone = rng.chance(0.45);
 
   for (let p = 0; p < halfPairs; p++) {
     const t = (p + 1) / (halfPairs + 1);
@@ -186,7 +203,7 @@ function addLegs(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
       [left, -1],
       [right, 1],
     ] as const) {
-      const legLen = Math.max(3, baseLen + rng.int(-1, 2));
+      const legLen = Math.max(2, baseLen + rng.int(-1, 1));
       paintRoot(grid, rng, anchor, anchor.col, anchor.row, side, palette);
       let col = anchor.col;
       let row = anchor.row;
@@ -198,13 +215,18 @@ function addLegs(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
         const nextCol = col + rng.pick([drift, 0, 0, side * (i < kneeAt ? 1 : 0)]);
         const nextRow = anchor.row - i;
         paintLimbPath(grid, rng, anchor, col, row, nextCol, nextRow, tip, color, thick, side);
+        // Beaded segments: plump blob every few steps
+        if (style === 'beads' && i % 2 === 0) {
+          put(grid, makeLimbCell(grid, anchor, nextCol + side, nextRow, tip, color, rng));
+          put(grid, makeLimbCell(grid, anchor, nextCol - side, nextRow, tip * 0.9, color, rng));
+          put(grid, makeLimbCell(grid, anchor, nextCol, nextRow - 1, tip, color, rng));
+        }
         col = nextCol;
         row = nextRow;
       }
       const footRow = row;
-      const footColor = darken(palette.base, 0.4);
+      const footColor = clawBone ? boneTint(palette) : darken(palette.base, 0.4);
       paintDigits(grid, rng, anchor, col, footRow, 'toes', side, footColor);
-      // Extra claw cells for count variety
       for (let c = 0; c < Math.min(clawCount, 2); c++) {
         put(grid, makeLimbCell(grid, anchor, col + c - 1, footRow - 1, 1, footColor, rng));
       }
@@ -218,7 +240,10 @@ function addArms(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
   if (left.length === 0 || right.length === 0) return;
 
   const pairs = rng.chance(0.28) ? 2 : 1;
-  const len = s(grid, rng.int(3, 5));
+  // Rare: longer arms (hulking reach) vs normal
+  const longArms = rng.chance(0.22);
+  const len = s(grid, longArms ? rng.int(5, 7) : rng.int(3, 5));
+  const clawBone = rng.chance(0.5);
 
   const placeArm = (anchors: GridCell[], dir: -1 | 1, rowBias: number) => {
     const sorted = [...anchors].sort((a, b) => a.row - b.row);
@@ -238,7 +263,8 @@ function addArms(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
       tipCol = nextCol;
       tipRow = nextRow;
     }
-    paintDigits(grid, rng, anchor, tipCol, tipRow, 'fingers', dir, darken(palette.base, 0.38));
+    const digColor = clawBone ? boneTint(palette) : darken(palette.base, 0.38);
+    paintDigits(grid, rng, anchor, tipCol, tipRow, 'fingers', dir, digColor);
   };
 
   for (let p = 0; p < pairs; p++) {
@@ -453,7 +479,7 @@ function addLongLegs(
       anchor.row - len,
       'toes',
       side,
-      darken(palette.outline, 0.05),
+      rng.chance(0.4) ? boneTint(palette) : darken(palette.outline, 0.05),
     );
   }
 }

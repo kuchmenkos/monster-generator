@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monster TTS Lab</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: system-ui, sans-serif;
+        background: #0a0a0f;
+        color: #eee;
+        padding: 24px;
+      }
+      h1 { margin: 0 0 8px; font-size: 1.4rem; }
+      .sub { opacity: 0.6; margin-bottom: 20px; font-size: 0.9rem; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+      button, select {
+        background: #1a1a24;
+        border: 1px solid #333;
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      button:hover { background: #252532; }
+      button:disabled { opacity: 0.4; cursor: wait; }
+      .card {
+        background: #12121a;
+        border: 1px solid #2a2a35;
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 12px;
+        max-width: 720px;
+      }
+      .name { font-size: 1.6rem; font-weight: 800; }
+      .label { opacity: 0.7; margin-top: 4px; }
+      .traits { margin-top: 12px; line-height: 1.6; font-size: 0.95rem; }
+      .silhouette {
+        width: 120px;
+        height: 120px;
+        border-radius: 40% 60% 55% 45% / 50% 40% 60% 50%;
+        background: radial-gradient(circle at 35% 35%, #6f6, #393);
+        margin: 16px 0;
+        animation: wobble 3s ease-in-out infinite;
+      }
+      @keyframes wobble {
+        0%, 100% { transform: rotate(-2deg) scale(1); }
+        50% { transform: rotate(2deg) scale(1.03); }
+      }
+      #textOut {
+        margin-top: 12px;
+        padding: 12px;
+        background: #0d0d12;
+        border-radius: 8px;
+        min-height: 48px;
+        white-space: pre-wrap;
+      }
+      pre#debug {
+        margin-top: 12px;
+        font-size: 11px;
+        opacity: 0.75;
+        overflow: auto;
+        max-height: 200px;
+      }
+      .err { color: #f88; margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>Monster TTS Lab</h1>
+    <p class="sub">Respeecher + Web Audio FX · placeholder demo</p>
+
+    <div class="row">
+      <select id="lang">
+        <option value="uk">Українська</option>
+        <option value="en">English</option>
+      </select>
+      <button id="roll">Roll Character</button>
+      <button id="speak">Speak</button>
+      <button id="rap">Rap</button>
+      <button id="stop">Stop</button>
+    </div>
+
+    <div class="card">
+      <div class="silhouette" aria-hidden="true"></div>
+      <div class="name" id="charName">—</div>
+      <div class="label" id="charLabel">—</div>
+      <div class="traits" id="traits">Roll a character to start.</div>
+      <div id="textOut"></div>
+      <div class="err" id="err"></div>
+      <pre id="debug"></pre>
+    </div>
+
+    <script type="module" src="/src/tts-demo/main.ts"></script>
+  </body>
+</html>

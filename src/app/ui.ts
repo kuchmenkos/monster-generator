@@ -116,6 +116,25 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
   } as CSSStyleDeclaration);
   root.appendChild(nameLabel);
 
+  const personalityLabel = document.createElement('div');
+  Object.assign(personalityLabel.style, {
+    position: 'absolute',
+    bottom: '48px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    color: 'rgba(242,242,247,0.72)',
+    fontSize: '14px',
+    fontWeight: '500',
+    letterSpacing: '0.03em',
+    textAlign: 'center',
+    zIndex: '12',
+    pointerEvents: 'none',
+    textShadow: '0 2px 8px rgba(0,0,0,0.7)',
+    maxWidth: '90%',
+    display: 'none',
+  } as CSSStyleDeclaration);
+  root.appendChild(personalityLabel);
+
   const makeArrow = (label: string, side: 'left' | 'right', onClick: () => void) => {
     const btn = makeBtn(label, onClick);
     btn.style.position = 'absolute';
@@ -208,6 +227,7 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     opts: {
       seed?: string;
       name?: string;
+      personalityLabel?: string;
       tab?: GalleryTab;
       emptyHint?: string;
     } = {},
@@ -227,6 +247,8 @@ export function createUi(root: HTMLElement, callbacks: UiCallbacks) {
     nextBtn.style.display = isDetail ? 'block' : 'none';
     nameLabel.style.display = isDetail ? 'block' : 'none';
     nameLabel.textContent = opts.name ?? '';
+    personalityLabel.style.display = isDetail && opts.personalityLabel ? 'block' : 'none';
+    personalityLabel.textContent = opts.personalityLabel ?? '';
     emptyHint.style.display = !isDetail && opts.emptyHint ? 'block' : 'none';
     emptyHint.textContent = opts.emptyHint ?? '';
 

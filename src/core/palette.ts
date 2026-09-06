@@ -45,6 +45,7 @@ export function darken(rgb: number, amount: number): number {
 }
 
 type Harmony = 'analogous' | 'complementary' | 'triad' | 'split';
+type Mood = 'default' | 'muddy' | 'pastel';
 
 /**
  * Tight 3–5 color palette per monster — vibrant but limited,
@@ -52,11 +53,19 @@ type Harmony = 'analogous' | 'complementary' | 'triad' | 'split';
  */
 export function generatePalette(rng: Rng): MonsterPalette {
   const harmony = rng.pick<Harmony>(['analogous', 'complementary', 'triad', 'split']);
+  // ~15% muddy/pastel mood; rest keeps existing neon-ish default
+  const mood: Mood = rng.chance(0.15) ? rng.pick(['muddy', 'pastel']) : 'default';
 
-  // Prefer saturated mid-tones for Real Monsters vibes
   const hue = rng.float(0, 360);
-  const sat = rng.float(0.55, 0.92);
-  const lit = rng.float(0.38, 0.58);
+  let sat = rng.float(0.55, 0.92);
+  let lit = rng.float(0.38, 0.58);
+  if (mood === 'muddy') {
+    sat = rng.float(0.28, 0.5);
+    lit = rng.float(0.32, 0.48);
+  } else if (mood === 'pastel') {
+    sat = rng.float(0.3, 0.55);
+    lit = rng.float(0.55, 0.72);
+  }
 
   let accentHue = hue;
   switch (harmony) {
@@ -82,8 +91,10 @@ export function generatePalette(rng: Rng): MonsterPalette {
   const accent2Hue = hue + rng.pick([60, 90, 180, 210, 270]) + rng.float(-15, 15);
   const accent2 = hslToRgb(accent2Hue, rng.float(0.55, 0.95), rng.float(0.4, 0.7));
   const mouth = hslToRgb(rng.float(350, 380), rng.float(0.55, 0.85), rng.float(0.22, 0.38));
+  // Lip slightly warmer/lighter than cavity mouth
+  const lip = lighten(mouth, rng.float(0.12, 0.28));
   const eyeWhite = hslToRgb(rng.float(40, 70), rng.float(0.05, 0.2), rng.float(0.88, 0.97));
   const pupil = hslToRgb(rng.float(200, 260), rng.float(0.1, 0.4), rng.float(0.05, 0.18));
 
-  return { base, highlight, shadow, outline, accent, accent2, mouth, eyeWhite, pupil };
+  return { base, highlight, shadow, outline, accent, accent2, mouth, lip, eyeWhite, pupil };
 }

@@ -14,10 +14,18 @@ type PatternKind =
   | 'stripes-curved'
   | 'mask'
   | 'bio-glow'
-  | 'dual-gradient';
+  | 'dual-gradient'
+  | 'mottle'
+  | 'patches'
+  | 'rings'
+  | 'split';
 
 function bodyCells(grid: MonsterGrid): GridCell[] {
   return [...grid.cells.values()].filter((c) => c.part === 'body');
+}
+
+function coatCells(grid: MonsterGrid): GridCell[] {
+  return [...grid.cells.values()].filter((c) => c.part === 'body' || c.part === 'appendage');
 }
 
 /** Cel-shade from normals + screen position so volume reads even with flat nz. */
@@ -230,6 +238,79 @@ function applyBioGlow(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): voi
   }
 }
 
+/** Dither / warty pebbling — main texture from pixel-art refs. */
+function applyMottle(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
+  const body = bodyCells(grid);
+  if (body.length === 0) return;
+  const a = darken(palette.base, 0.12);
+  const b = lighten(palette.base, 0.1);
+  const c2 = rng.chance(0.4) ? palette.accent : darken(palette.base, 0.22);
+  for (const c of body) {
+    const n = (c.col * 7 + c.row * 13) % 5;
+    if (n === 0) c.color = a;
+    else if (n === 1 && (c.col + c.row) % 2 === 0) c.color = b;
+    else if (n === 2 && rng.chance(0.35)) c.color = c2;
+  }
+}
+
+/** Large asymmetric color patches. */
+function applyPatches(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
+  const body = bodyCells(grid);
+  if (body.length === 0) return;
+  const count = rng.int(2, 4);
+  for (let i = 0; i < count; i++) {
+    const center = body[rng.int(0, body.length - 1)]!;
+    const rx = rng.int(3, 7);
+    const ry = rng.int(2, 5);
+    const tint = rng.pick([palette.accent, palette.accent2, darken(palette.base, 0.25)]);
+    for (const c of body) {
+      const nx = (c.col - center.col) / rx;
+      const ny = (c.row - center.row) / ry;
+      if (nx * nx + ny * ny < 1) c.color = tint;
+    }
+  }
+}
+
+/** Concentric rings — also paints appendages for limb banding. */
+function applyRings(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
+  const cells = coatCells(grid);
+  if (cells.length === 0) return;
+  const minC = Math.min(...cells.map((c) => c.col));
+  const maxC = Math.max(...cells.map((c) => c.col));
+  const minR = Math.min(...cells.map((c) => c.row));
+  const maxR = Math.max(...cells.map((c) => c.row));
+  const cx = (minC + maxC) / 2;
+  const cy = (minR + maxR) / 2;
+  const period = rng.int(3, 5);
+  const alt = rng.chance(0.5) ? palette.accent : darken(palette.base, 0.18);
+  for (const c of cells) {
+    const d = Math.hypot(c.col - cx, c.row - cy);
+    if (Math.floor(d / period) % 2 === 0) c.color = alt;
+  }
+}
+
+/** Left/right or top/bottom split coat. */
+function applySplit(grid: MonsterGrid, rng: Rng, palette: MonsterPalette): void {
+  const body = bodyCells(grid);
+  if (body.length === 0) return;
+  const minC = Math.min(...body.map((c) => c.col));
+  const maxC = Math.max(...body.map((c) => c.col));
+  const minR = Math.min(...body.map((c) => c.row));
+  const maxR = Math.max(...body.map((c) => c.row));
+  const vertical = rng.chance(0.55);
+  const a = palette.accent;
+  const b = palette.accent2;
+  for (const c of body) {
+    if (vertical) {
+      const mid = (minC + maxC) / 2;
+      c.color = c.col < mid ? a : b;
+    } else {
+      const mid = (minR + maxR) / 2;
+      c.color = c.row > mid ? a : b;
+    }
+  }
+}
+
 /**
  * Cel-shaded coat + rich patterns. Outline last so rim stays crisp.
  */
@@ -252,6 +333,11 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
     'mask',
     'bio-glow',
     'dual-gradient',
+    'mottle',
+    'mottle',
+    'patches',
+    'rings',
+    'split',
   ]);
 
   switch (kind) {
@@ -284,6 +370,18 @@ export function applyPatterns(rng: Rng, grid: MonsterGrid, palette: MonsterPalet
       break;
     case 'bio-glow':
       applyBioGlow(grid, rng, palette);
+      break;
+    case 'mottle':
+      applyMottle(grid, rng, palette);
+      break;
+    case 'patches':
+      applyPatches(grid, rng, palette);
+      break;
+    case 'rings':
+      applyRings(grid, rng, palette);
+      break;
+    case 'split':
+      applySplit(grid, rng, palette);
       break;
     default:
       break;

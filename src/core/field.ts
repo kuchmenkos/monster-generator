@@ -11,14 +11,18 @@ export type BodyArchetype =
   | 'lanky'
   | 'slug'
   | 'bighead'
-  | 'stack';
+  | 'stack'
+  | 'peanut'
+  | 'lobed'
+  | 'crescent'
+  | 'vase';
 
 /**
  * Build a continuous 3D metaball field (no preset sprites).
  * Appendages are elongated blobs that merge into the body.
  */
 export function createBlobs(rng: Rng): { blobs: Blob[]; archetype: BodyArchetype } {
-  // No column/wide — those read as boxes. Organic silhouettes only.
+  // Existing weights dominate; rare sketch archetypes appended (1 slot each).
   const archetype = rng.pick<BodyArchetype>([
     'blob',
     'blob',
@@ -34,15 +38,25 @@ export function createBlobs(rng: Rng): { blobs: Blob[]; archetype: BodyArchetype
     'slug',
     'bighead',
     'bighead',
+    'peanut',
+    'lobed',
+    'crescent',
+    'vase',
   ]);
 
   const blobs: Blob[] = [];
   const bodyCount =
     archetype === 'bighead'
       ? rng.int(2, 3)
-      : archetype === 'stack'
+      : archetype === 'stack' || archetype === 'lobed'
         ? rng.int(3, 4)
-        : rng.int(3, 6);
+        : archetype === 'peanut'
+          ? rng.int(2, 3)
+          : archetype === 'crescent'
+            ? rng.int(3, 5)
+            : archetype === 'vase'
+              ? rng.int(3, 5)
+              : rng.int(3, 6);
 
   for (let i = 0; i < bodyCount; i++) {
     const t = i / Math.max(1, bodyCount - 1);
@@ -150,6 +164,49 @@ export function createBlobs(rng: Rng): { blobs: Blob[]; archetype: BodyArchetype
         ry = rng.float(0.16, 0.26);
         rz = segW * rng.float(0.7, 0.95);
         x = rng.float(-0.12, 0.12);
+        break;
+      }
+      case 'peanut': {
+        // Figure-eight / hourglass — two lobes with pinched waist
+        const upper = t < 0.5;
+        y = upper ? rng.float(0.15, 0.45) : rng.float(-0.45, -0.15);
+        rx = rng.float(0.28, 0.48);
+        ry = rng.float(0.22, 0.38);
+        rz = rng.float(0.22, 0.4);
+        x = rng.float(-0.1, 0.1);
+        break;
+      }
+      case 'lobed': {
+        // Soft snowman — 3 lobes with width jumps (reuse stack feel)
+        y = -0.5 + t * 1.1;
+        const jump = rng.float(0.65, 1.3);
+        const segW = rng.float(0.24, 0.48) * jump;
+        rx = segW;
+        ry = rng.float(0.18, 0.28);
+        rz = segW * rng.float(0.75, 0.95);
+        x = rng.float(-0.1, 0.1);
+        break;
+      }
+      case 'crescent': {
+        // Kidney / crescent — arc of blobs offset from center
+        const ang = -0.6 + t * 1.2;
+        const rad = rng.float(0.28, 0.45);
+        x = Math.sin(ang) * rad + rng.float(-0.05, 0.05);
+        y = Math.cos(ang) * rad * 0.85 + rng.float(-0.08, 0.08);
+        rx = rng.float(0.2, 0.38);
+        ry = rng.float(0.18, 0.32);
+        rz = rng.float(0.18, 0.32);
+        break;
+      }
+      case 'vase': {
+        // Narrow waist, flared top or bottom
+        y = -0.45 + t * 1.0;
+        const waist = Math.sin(t * Math.PI);
+        const flare = 0.55 + (1 - waist) * 0.7;
+        rx = rng.float(0.22, 0.4) * flare;
+        ry = rng.float(0.2, 0.32);
+        rz = rng.float(0.2, 0.36) * flare;
+        x = rng.float(-0.08, 0.08);
         break;
       }
     }

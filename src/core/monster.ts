@@ -1,7 +1,8 @@
-import { applyFeatures } from './features';
+import { applyDefects, applyFeatures } from './features';
 import { createBlobs } from './field';
 import { applyLimbs } from './limbs';
 import { generateMonsterName } from './names';
+import { generatePersonality, personalityToAnim } from './personality';
 import { generatePalette } from './palette';
 import { applyPatterns } from './patterns';
 import { applyGroundShadow, gridToParticles, rasterizeField } from './particles';
@@ -70,6 +71,7 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
   applyGroundShadow(grid);
   applyPatterns(rng, grid, palette);
   applyFeatures(rng, grid, palette, archetype);
+  applyDefects(rng, grid, palette);
 
   const particles = gridToParticles(grid);
 
@@ -81,13 +83,17 @@ function generateCandidate(variantSeed: string, displaySeed: string): MonsterDat
     p.y -= cy;
   }
 
+  const personality = generatePersonality(displaySeed);
+  const anim = personalityToAnim(makeAnim(rng), personality);
+
   return {
     seed: displaySeed,
-    name: generateMonsterName(displaySeed),
+    name: generateMonsterName(displaySeed, personality),
     archetype,
     particles,
     palette,
-    anim: makeAnim(rng),
+    anim,
+    personality,
     cellSize: grid.cell,
     scaleRef: grid.scaleRef,
     bounds: computeBounds(particles),

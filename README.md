@@ -1,3 +1,5 @@
+> **Новая версия: Булала 3D.** Запуск, возможности и подключение ElevenLabs — в [BULALA.md](BULALA.md). Старый прототип доступен на `/legacy.html`.
+
 # Monster Generator
 
 Процедурні монстри з частинок у стилі *Aaahh!!! Real Monsters*.

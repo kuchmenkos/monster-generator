@@ -81,7 +81,7 @@ async function main() {
     currentName = data.name;
     navSeeds = seedsContext;
     writeSeedToUrl(seed);
-    ui.setMode('detail', { seed, name: data.name });
+    ui.setMode('detail', { seed, name: data.name, personalityLabel: data.personality.label });
     layout();
   };
 
