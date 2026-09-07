@@ -1,0 +1,90 @@
+.sheet-root {
+  position: absolute;
+  inset: 0;
+  z-index: 35;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.sheet-root.open {
+  pointer-events: auto;
+}
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: #312d2944;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.sheet-root.open .sheet-scrim {
+  opacity: 1;
+}
+.sheet-panel {
+  position: relative;
+  z-index: 1;
+  background: var(--card);
+  border-radius: 24px 24px 0 0;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  box-shadow: 0 -12px 40px #312d2918;
+  transform: translateY(110%);
+  transition: transform 0.35s cubic-bezier(0.2, 1.1, 0.3, 1);
+  max-height: min(88dvh, 720px);
+  display: flex;
+  flex-direction: column;
+  touch-action: none;
+}
+.sheet-root.open .sheet-panel {
+  transform: translateY(0);
+}
+.sheet-root.peek .sheet-panel {
+  transform: translateY(calc(100% - var(--peek, 112px)));
+}
+.sheet-root.peek {
+  pointer-events: none;
+}
+.sheet-root.peek .sheet-panel {
+  pointer-events: auto;
+}
+.sheet-root.peek .sheet-scrim {
+  opacity: 0;
+  pointer-events: none;
+}
+.sheet-handle {
+  width: 42px;
+  height: 5px;
+  border-radius: 999px;
+  background: #d8d2c6;
+  margin: 10px auto 6px;
+  flex-shrink: 0;
+}
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 16px 8px;
+  flex-shrink: 0;
+}
+.sheet-head h3 {
+  margin: 0;
+  font-family: "Nunito", sans-serif;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
+.sheet-body {
+  padding: 0 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  flex: 1;
+  touch-action: pan-y;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-panel,
+  .sheet-scrim {
+    transition: none;
+  }
+}

@@ -1,4 +1,5 @@
 import * as T from "three";
+import { SkinClient } from "../src/bulala/skin-client";
 import { buildCreature } from "../src/bulala/creature";
 import { generate, catalogs, type Trait } from "../src/bulala/genome";
 const renderer = new T.WebGLRenderer({
@@ -22,6 +23,7 @@ for (const [x, y, z, power] of [
   scene.add(l);
 }
 const camera = new T.PerspectiveCamera(32, 320 / 360, 0.1, 40);
+const worker=new SkinClient();
 let generation = 0;
 async function render() {
   const token = ++generation,
@@ -39,6 +41,8 @@ async function render() {
       ears: 4,
       horns: 3,
       skin: 0,
+      hair: 0,
+      whiskers: 0,
       pattern: 0,
       finish: 0,
       palette: 0,
@@ -47,8 +51,14 @@ async function render() {
       pupil: 0,
     });
     g.genes[key] = i;
-    const c = buildCreature(g);
-    c.animate(0, 0, 0, true);
+    const material=(document.querySelector('#material') as HTMLSelectElement).value;
+    const expression=(document.querySelector('#expression') as HTMLSelectElement).value;
+    let data;try{data=await worker.build(g);}catch{return;}
+    if(token!==generation)return;
+    const c = buildCreature(g,data);
+    if(material==='gray')c.root.traverse(o=>{if(o instanceof T.Mesh){const materials=Array.isArray(o.material)?o.material:[o.material];for(const mat of materials){if(mat instanceof T.MeshStandardMaterial){mat.vertexColors=false;mat.color.set('#a3a3a3');mat.roughness=.9;}}}});
+    if(expression==='open'){c.react('shout');for(let t=0;t<.65;t+=.03)c.animate(t,0,0,true);}
+    if(expression!=="open")c.animate(0, 0, 0, true);
     scene.add(c.root);
     const box = new T.Box3().setFromObject(c.root, true),
       center = box.getCenter(new T.Vector3()),
@@ -58,13 +68,13 @@ async function render() {
     const title = document.createElement("h2");
     title.textContent = `${i} · ${catalogs[key][i].label}`;
     article.append(title);
-    for (const angle of key === "tail"
+    for (const angle of key === "tail" || key === "booty"
       ? [Math.PI, Math.PI * 0.64]
-      : [0, Math.PI * 0.37]) {
+      : [0, Math.PI/2, Math.PI*.12, -1]) {
       camera.position.set(
-        center.x + Math.sin(angle) * distance,
-        center.y + 0.1,
-        center.z + Math.cos(angle) * distance,
+        center.x + Math.sin(angle===-1?0:angle) * distance,
+        center.y + (angle===-1?-distance*.48:.1),
+        center.z + Math.cos(angle===-1?0:angle) * distance,
       );
       camera.lookAt(center);
       renderer.render(scene, camera);
@@ -81,6 +91,6 @@ async function render() {
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
-document.querySelector("select")!.addEventListener("change", render);
+document.querySelectorAll("select").forEach(select=>select.addEventListener("change", render));
 void render();
-window.addEventListener("pagehide", () => renderer.dispose());
+window.addEventListener("pagehide", () => {worker.cancel();renderer.dispose();});

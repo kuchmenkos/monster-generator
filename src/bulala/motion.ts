@@ -1,5 +1,5 @@
 export type Mood = "neutral" | "happy" | "sad";
-export type Reaction = "smile" | "shout" | "sigh" | "pet";
+export type Reaction = "smile" | "shout" | "sigh" | "pet" | "shiver" | "chew";
 const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
 export class SoftSpring {
   value = 0;
@@ -33,13 +33,22 @@ export class ExpressionController {
   update(dt: number, speech: number, reduced: boolean) {
     this.elapsed += Math.min(0.1, Math.max(0, dt));
     const duration =
-      this.reaction === "pet" ? 1.9 : this.reaction === "sigh" ? 2.2 : 1.65;
+      this.reaction === "pet"
+        ? 1.9
+        : this.reaction === "sigh"
+          ? 2.2
+          : this.reaction === "shiver"
+            ? 2.1
+            : this.reaction === "chew"
+              ? 1.8
+              : 1.65;
     if (this.elapsed >= duration) this.reaction = null;
     const t = this.reaction ? this.elapsed / duration : 0;
     const envelope = this.reaction ? Math.sin(Math.PI * t) ** 0.7 : 0;
     let smile = this.mood === "happy" ? 0.65 : this.mood === "sad" ? -0.55 : 0;
     if (this.reaction === "smile" || this.reaction === "pet")
       smile += (1 - smile) * envelope;
+    if (this.reaction === "chew") smile += envelope * 0.35;
     let open = 0,
       round = 0;
     if (this.reaction === "shout") {
@@ -49,6 +58,15 @@ export class ExpressionController {
     if (this.reaction === "sigh") {
       open = envelope * 0.42;
       round = envelope;
+    }
+    if (this.reaction === "chew") {
+      const chew = Math.abs(Math.sin(this.elapsed * Math.PI * 3.2));
+      open = chew * 0.55 * (1 - t * 0.35);
+      round = chew * 0.4;
+    }
+    if (this.reaction === "shiver") {
+      open = envelope * 0.12;
+      round = envelope * 0.35;
     }
     if (speech > 0.015) {
       open = speech;
@@ -64,6 +82,13 @@ export class ExpressionController {
         roll = arc * (beat < 1 ? 1 : -1) * 0.11;
       }
     }
+    if (this.reaction === "shiver" && !reduced) {
+      hop = Math.sin(this.elapsed * 42) * 0.02 * envelope;
+      roll = Math.sin(this.elapsed * 38) * 0.08 * envelope;
+    }
+    if (this.reaction === "chew" && !reduced) {
+      hop = Math.abs(Math.sin(this.elapsed * Math.PI * 3.2)) * 0.04;
+    }
     return {
       smile,
       open: clamp(open, 0, 1),
@@ -71,7 +96,7 @@ export class ExpressionController {
       hop,
       roll,
       press: this.reaction === "pet" ? envelope * 0.055 : 0,
-      sigh: this.reaction === "sigh" ? envelope : 0,
+      sigh: this.reaction === "sigh" || this.reaction === "shiver" ? envelope : 0,
     };
   }
 }

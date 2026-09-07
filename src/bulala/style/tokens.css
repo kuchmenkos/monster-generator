@@ -1,0 +1,51 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;650;700;750;800&family=Nunito:wght@700;800;900;1000&display=swap");
+
+:root {
+  font-family: "Manrope", sans-serif;
+  color: #383631;
+  background: #ebe7df;
+  font-synthesis: none;
+  font-weight: 500;
+  --muted: #89867e;
+  --line: #e9e6de;
+  --orange: #ee784e;
+  --green: #657664;
+  --ink: #312d29;
+  --paper: #f8f7f3;
+  --card: #fffdf8;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tabbar-h: calc(64px + var(--safe-bottom));
+  --header-h: calc(56px + var(--safe-top));
+  --app-max: 460px;
+  --danger: #c45a3a;
+  --dock-h: 92px;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+#app {
+  max-width: var(--app-max);
+  margin: 0 auto;
+  height: 100dvh;
+  height: 100svh;
+  display: grid;
+  grid-template-rows: var(--header-h) 1fr var(--tabbar-h);
+  background: var(--paper);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px #00000008, 0 24px 80px #312d2918;
+}
+
+@media (min-width: 520px) {
+  body {
+    background:
+      radial-gradient(ellipse at 20% 0%, #f3ebe0 0%, transparent 50%),
+      radial-gradient(ellipse at 90% 100%, #e8e4d8 0%, transparent 45%),
+      #ebe7df;
+  }
+}

@@ -1,0 +1,177 @@
+.workshop-screen {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  --peek: 148px;
+}
+.workshop-screen.sheet-full {
+  --peek: 0px;
+}
+.workshop-stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  touch-action: none;
+}
+.workshop-stage canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+.workshop-chrome {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.workshop-chrome > * {
+  pointer-events: auto;
+}
+.workshop-views {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--peek, 148px) + 10px);
+  transform: translateX(-50%);
+  z-index: 5;
+  transition: opacity 0.2s, bottom 0.25s;
+}
+.workshop-screen.sheet-full .workshop-views {
+  opacity: 0;
+  pointer-events: none;
+}
+.ws-meta {
+  margin-bottom: 10px;
+}
+.ws-meta .name-row h2 {
+  font-size: 22px;
+}
+.trait-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+}
+.trait-chip {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #f3efe8;
+  font-size: 13px;
+  font-weight: 700;
+}
+.trait-chip.active {
+  background: var(--ink);
+  color: #fff;
+}
+.trait-chip.active:hover {
+  color: #fff;
+}
+.sub-traits {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  margin-bottom: 8px;
+}
+.sub-trait {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #efeae2;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sub-trait.active {
+  background: var(--orange);
+  color: #fff;
+}
+.sub-trait.active:hover {
+  color: #fff;
+}
+.variant-strip-wrap {
+  display: grid;
+  grid-template-columns: 36px 1fr 36px;
+  gap: 4px;
+  align-items: center;
+}
+.variant-strip {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 4px 2px 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.variant-strip.swatches-row {
+  flex-wrap: nowrap;
+}
+.variant-pill {
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+  text-align: center;
+  justify-content: center;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f7f4ee;
+  font-size: 13px;
+  font-weight: 650;
+  min-width: 104px;
+  white-space: nowrap;
+}
+.variant-pill.selected {
+  background: #312d29;
+  color: #fff;
+}
+.variant-pill.selected:hover {
+  color: #fff;
+}
+.strip-nav {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: #f3efe8;
+}
+.workshop-footer {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.workshop-tools {
+  display: flex;
+  gap: 8px;
+}
+.workshop-tools .generate-button {
+  flex: 1;
+}
+.workshop-tools .secondary-button {
+  min-width: 48px;
+  padding: 0 12px;
+}
+.ws-tool-label {
+  font-size: 12px;
+}
+@media (max-width: 380px) {
+  .ws-tool-label {
+    display: none;
+  }
+}
+@media (max-height: 640px) {
+  .workshop-screen:not(.sheet-full) {
+    --peek: 118px;
+  }
+  .workshop-views {
+    bottom: calc(var(--peek, 118px) + 6px);
+  }
+}

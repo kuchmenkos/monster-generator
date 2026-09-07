@@ -1726,3 +1726,6 @@ dialog::backdrop {
 .reaction-row button { flex: 1; font: inherit; font-size: 11px; padding: 8px 3px; border: 1px solid #e5e2da; border-radius: 20px; background: #faf9f6; color: #686e60; cursor: pointer; }
 .reaction-row button:hover { background: #e9eddf; }
 .swatches { flex-wrap: wrap; }
+
+#stage[aria-busy="true"]::after {content:"Лепим Булалу…";position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);padding:12px 20px;border-radius:30px;background:rgba(250,247,239,.95);color:#64664f;font-size:14px;pointer-events:none;}
+#stage[aria-busy="true"] canvas{opacity:.35;transition:opacity .2s;}

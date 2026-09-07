@@ -24,7 +24,7 @@
     }
     main {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 16px;
     }
     article {
@@ -49,11 +49,21 @@
     Анатомия · гладкая голова
     <select aria-label="Категория">
       <option value="nose">Носы</option>
+      <option value="mouth">Рты</option>
+      <option value="eyeCut">Разрез глаз</option>
+      <option value="brows">Брови</option>
+      <option value="shape">Голова</option>
+      <option value="booty">Булочки</option>
       <option value="ears">Уши</option>
       <option value="horns">Рога</option>
       <option value="tail">Хвосты</option>
       <option value="pupil">Зрачки</option>
+      <option value="skin">Покрытия</option>
+      <option value="hair">Причёски</option>
+      <option value="whiskers">Усы</option>
     </select>
+    <select id="material" aria-label="Материал проверки"><option value="clay">Пластилин</option><option value="gray">Серая глина</option></select>
+    <select id="expression" aria-label="Выражение"><option value="rest">Покой</option><option value="open">Открытый рот</option></select>
     <span id="status"></span>
   </header>
   <main></main>

@@ -12,6 +12,84 @@ class ApiError extends Error {
     this.status = status;
   }
 }
+const NO_KEY = "Добавь ELEVENLABS_API_KEY в .env.local и перезапусти сервер.";
+// The dashboard keeps showing the key *ID* (hex) after the secret itself is
+// hidden, so pasting the wrong one is the most common setup mistake.
+const KEY_IS_ID =
+  "В .env.local лежит ID ключа, а не сам ключ: настоящий ELEVENLABS_API_KEY начинается с «sk_». Открой elevenlabs.io → Settings → API Keys, создай ключ и скопируй значение сразу — потом оно не показывается.";
+/** ElevenLabs answers errors as `{ detail: { status, message } }`. */
+const UPSTREAM_CODES: Record<string, [number, string]> = {
+  api_key_id_used_as_api_key: [503, KEY_IS_ID],
+  invalid_api_key: [
+    503,
+    "ElevenLabs не принял ключ. Проверь ELEVENLABS_API_KEY в .env.local и перезапусти сервер.",
+  ],
+  missing_permissions: [
+    503,
+    "У ключа ElevenLabs нет прав на эту операцию — разреши Text to Speech и Voice Generation в настройках ключа.",
+  ],
+  quota_exceeded: [
+    429,
+    "На аккаунте ElevenLabs закончились кредиты. Пополни лимит или подставь другой ключ.",
+  ],
+  detected_unusual_activity: [
+    403,
+    "ElevenLabs отключил бесплатный тариф для этого аккаунта — нужна платная подписка.",
+  ],
+  voice_not_found: [404, "ElevenLabs: голос не найден. Проверь Voice ID."],
+  voice_limit_reached: [
+    409,
+    "В аккаунте ElevenLabs кончились слоты для голосов — удали лишний голос и повтори.",
+  ],
+  max_character_limit_exceeded: [
+    413,
+    "Фраза слишком длинная для текущего тарифа ElevenLabs.",
+  ],
+};
+const UPSTREAM_STATUSES: Record<number, string> = {
+  400: "ElevenLabs не принял запрос. Проверь ключ и Voice ID.",
+  401: "ElevenLabs: проверь API-ключ.",
+  403: "ElevenLabs: у ключа нет разрешения на эту операцию.",
+  404: "ElevenLabs: голос не найден. Проверь Voice ID.",
+  422: "ElevenLabs не принял параметры голоса.",
+  429: "ElevenLabs: исчерпан лимит или слишком много запросов.",
+};
+/** Values pasted into `.env` often keep wrapping quotes or a trailing CR. */
+function clean(value: string | undefined) {
+  return (value || "")
+    .trim()
+    .replace(/^(['"])([\s\S]*)\1$/, "$2")
+    .trim();
+}
+/** Returns an actionable message when the configured key cannot possibly work. */
+function keyProblem(key: string) {
+  if (!key) return NO_KEY;
+  // A raw header value with spaces or newlines makes fetch throw, not answer.
+  if (/[^\x21-\x7e]/.test(key))
+    return "ELEVENLABS_API_KEY содержит пробел или перевод строки — скопируй ключ заново.";
+  if (/^[0-9a-f]{32}$|^[0-9a-f]{64}$/i.test(key)) return KEY_IS_ID;
+  return undefined;
+}
+async function upstreamError(response: Response) {
+  let code = "";
+  try {
+    const detail = ((await response.json()) as { detail?: unknown }).detail as
+      string | { status?: string; code?: string } | undefined;
+    code =
+      (typeof detail === "string" ? detail : detail?.status || detail?.code) ||
+      "";
+  } catch {
+    // Non-JSON upstream body: fall back to the status code alone.
+  }
+  const known = UPSTREAM_CODES[code];
+  if (known) return new ApiError(known[0], known[1]);
+  return new ApiError(
+    // A bare upstream 400 must not look like a validation error from us.
+    response.status === 400 ? 502 : response.status,
+    UPSTREAM_STATUSES[response.status] ||
+      "ElevenLabs временно недоступен. Попробуй позже.",
+  );
+}
 function json(res: ServerResponse, status: number, data: unknown) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -54,13 +132,18 @@ export function bulalaVoicePlugin(): Plugin {
         }
       })
       .catch(() => {}));
+  const apiKey = () =>
+    clean(env.ELEVENLABS_API_KEY || process.env.ELEVENLABS_API_KEY);
+  const defaultVoice = () => {
+    const id = clean(
+      env.ELEVENLABS_VOICE_ID || process.env.ELEVENLABS_VOICE_ID,
+    );
+    return /^[\w-]{1,100}$/.test(id) ? id : "";
+  };
   async function upstream(path: string, payload: unknown) {
-    const key = env.ELEVENLABS_API_KEY || process.env.ELEVENLABS_API_KEY;
-    if (!key)
-      throw new ApiError(
-        503,
-        "Добавь ELEVENLABS_API_KEY в .env.local и перезапусти сервер.",
-      );
+    const key = apiKey();
+    const problem = keyProblem(key);
+    if (problem) throw new ApiError(503, problem);
     let response: Response;
     try {
       response = await fetch("https://api.elevenlabs.io/v1" + path, {
@@ -69,26 +152,15 @@ export function bulalaVoicePlugin(): Plugin {
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(90000),
       });
-    } catch {
+    } catch (e) {
       throw new ApiError(
         504,
-        "ElevenLabs не ответил вовремя. Попробуй ещё раз.",
+        (e as Error)?.name === "TimeoutError"
+          ? "ElevenLabs не ответил вовремя. Попробуй ещё раз."
+          : "Не удалось связаться с ElevenLabs. Проверь интернет и повтори.",
       );
     }
-    if (!response.ok) {
-      const errors: Record<number, string> = {
-        401: "ElevenLabs: проверь API-ключ.",
-        403: "ElevenLabs: у ключа нет разрешения на эту операцию.",
-        404: "ElevenLabs: голос не найден. Проверь Voice ID.",
-        422: "ElevenLabs не принял параметры голоса.",
-        429: "ElevenLabs: исчерпан лимит или слишком много запросов.",
-      };
-      throw new ApiError(
-        response.status,
-        errors[response.status] ||
-          "ElevenLabs временно недоступен. Попробуй позже.",
-      );
-    }
+    if (!response.ok) throw await upstreamError(response);
     return response;
   }
   async function design(seed: string) {
@@ -203,11 +275,13 @@ export function bulalaVoicePlugin(): Plugin {
         return;
       }
       if (path === "/api/bulala/status" && req.method === "GET") {
+        // Report whether the key can work at all, not merely that it exists,
+        // so the setup mistake shows up before the first generation attempt.
+        const problem = keyProblem(apiKey());
         json(res, 200, {
-          elevenlabs: !!(
-            env.ELEVENLABS_API_KEY || process.env.ELEVENLABS_API_KEY
-          ),
-          defaultVoice: !!env.ELEVENLABS_VOICE_ID,
+          elevenlabs: !problem,
+          defaultVoice: !!defaultVoice(),
+          hint: problem,
         });
         return;
       }
@@ -240,11 +314,8 @@ export function bulalaVoicePlugin(): Plugin {
           (data.voiceId && !/^[\w-]{1,100}$/.test(data.voiceId)))
       )
         throw new ApiError(400, "Некорректный Voice ID.");
-      if (!(env.ELEVENLABS_API_KEY || process.env.ELEVENLABS_API_KEY))
-        throw new ApiError(
-          503,
-          "Добавь ELEVENLABS_API_KEY в .env.local и перезапусти сервер.",
-        );
+      const problem = keyProblem(apiKey());
+      if (problem) throw new ApiError(503, problem);
       if (inFlight >= 2)
         throw new ApiError(429, "Подожди завершения предыдущей озвучки.");
       inFlight++;
@@ -253,11 +324,7 @@ export function bulalaVoicePlugin(): Plugin {
           json(res, 200, { voiceId: await design(data.seed) });
           return;
         }
-        const id =
-          data.voiceId ||
-          voices[data.seed] ||
-          env.ELEVENLABS_VOICE_ID ||
-          process.env.ELEVENLABS_VOICE_ID;
+        const id = data.voiceId || voices[data.seed] || defaultVoice();
         if (!id)
           throw new ApiError(
             400,

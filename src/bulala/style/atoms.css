@@ -1,0 +1,363 @@
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+button {
+  cursor: pointer;
+  color: inherit;
+  border: 0;
+  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition:
+    background 0.2s,
+    transform 0.2s,
+    color 0.2s;
+}
+button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+button,
+a {
+  touch-action: manipulation;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #9d8bb9;
+  outline-offset: 3px;
+}
+button:active {
+  transform: translateY(1px);
+}
+button:hover {
+  color: #bd5936;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+svg {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+}
+p {
+  line-height: 1.65;
+}
+[hidden] {
+  display: none !important;
+}
+
+.brand {
+  font-family: "Nunito", sans-serif;
+  font-size: 28px;
+  font-weight: 1000;
+  letter-spacing: -1.6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.brand-dot {
+  font: 10px "Manrope", sans-serif;
+  align-self: flex-start;
+  margin-top: 10px;
+  margin-left: -5px;
+}
+.brand-face {
+  width: 30px;
+  height: 26px;
+  background: #ee784e;
+  border-radius: 46% 46% 42% 42%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  position: relative;
+  transform: rotate(-8deg);
+}
+.brand-face:before,
+.brand-face:after {
+  content: "";
+  position: absolute;
+  top: -5px;
+  width: 10px;
+  height: 12px;
+  background: #ee784e;
+  border-radius: 8px;
+  z-index: -1;
+}
+.brand-face:before {
+  left: 2px;
+  transform: rotate(-20deg);
+}
+.brand-face:after {
+  right: 2px;
+  transform: rotate(20deg);
+}
+.brand-face b {
+  width: 6px;
+  height: 8px;
+  background: #fff5e5;
+  border-radius: 50%;
+  position: relative;
+}
+.brand-face b:after {
+  content: "";
+  width: 2.5px;
+  height: 4px;
+  background: #493324;
+  position: absolute;
+  left: 2px;
+  top: 1.5px;
+  border-radius: 50%;
+}
+
+.eyebrow {
+  font-size: 9px;
+  letter-spacing: 1.8px;
+  font-weight: 800;
+  color: #85867c;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.eyebrow > span {
+  width: 6px;
+  height: 6px;
+  background: #ee784e;
+  border-radius: 50%;
+}
+
+.icon-button {
+  width: 36px;
+  height: 36px;
+  background: #ffffff70;
+  border: 1px solid #e4ded250;
+  border-radius: 11px;
+  color: #888579;
+}
+.icon-button:hover,
+.icon-button[aria-pressed="true"] {
+  background: #fff6e9;
+  color: #d4714e;
+  border-color: #eac7b8;
+}
+.icon-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.generate-button {
+  background: var(--orange);
+  color: #fff9ee;
+  min-height: 48px;
+  padding: 0 20px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 750;
+  box-shadow:
+    0 4px 0 #cf623a18,
+    inset 0 1px 0 #ffffff40;
+}
+.generate-button:hover {
+  background: #e56840;
+  color: white;
+  transform: translateY(-1px);
+}
+.generate-button svg {
+  width: 17px;
+  height: 17px;
+}
+.secondary-button {
+  border: 1px solid #ded9cd;
+  border-radius: 14px;
+  min-height: 48px;
+  padding: 0 16px;
+  font-size: 12px;
+  gap: 8px;
+  background: #fff;
+}
+.secondary-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.live-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  color: #828475;
+  font-weight: 800;
+}
+.live-label > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8e9e79;
+  box-shadow: 0 0 0 4px #879e7915;
+}
+
+.view-picker {
+  z-index: 4;
+  display: flex;
+  padding: 4px;
+  background: #fffdf7b8;
+  border: 1px solid #e3ded4;
+  border-radius: 30px;
+  white-space: nowrap;
+  box-shadow: 0 4px 18px #70664f05;
+}
+.view-picker button {
+  font-size: 11px;
+  border-radius: 22px;
+  min-height: 34px;
+  padding: 0 14px;
+  color: #8c897f;
+}
+.view-picker .selected {
+  background: #dfdfce;
+  color: #5e6452;
+}
+.view-picker svg {
+  width: 12px;
+  height: 12px;
+}
+
+.heading-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.name-row h2 {
+  font-family: "Nunito", sans-serif;
+  font-size: 26px;
+  letter-spacing: -0.8px;
+  font-weight: 900;
+  margin: 0;
+}
+.rarity-badge {
+  background: color-mix(in srgb, var(--rarity) 11%, white);
+  color: var(--rarity);
+  font-size: 10px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-weight: 750;
+}
+.creature-heading p {
+  font-size: 12px;
+  color: #928b80;
+  margin: 6px 0 0;
+  min-height: 16px;
+}
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--swatch);
+  outline: 1px solid #9991;
+  outline-offset: 3px;
+  padding: 0;
+  box-shadow: inset 0 1px 3px #fff6;
+}
+.swatch.selected {
+  outline: 1px solid #88816d;
+  outline-offset: 3px;
+}
+
+.chaos-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.chaos-label output {
+  color: #8b8f75;
+}
+input[type="range"] {
+  width: 100%;
+  height: 4px;
+  display: block;
+  margin: 10px 0 0;
+  accent-color: #8c9578;
+  cursor: pointer;
+}
+
+.webgl-error {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 30px;
+  text-align: center;
+}
+.webgl-error p {
+  font-size: 13px;
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+.stage:active {
+  cursor: grabbing;
+}
+.stage canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+.stage[aria-busy="true"]::after {
+  content: "Лепим…";
+  position: absolute;
+  left: 50%;
+  top: 48%;
+  transform: translate(-50%, -50%);
+  padding: 10px 16px;
+  border-radius: 30px;
+  background: rgba(250, 247, 239, 0.95);
+  color: #64664f;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 2;
+}
+.stage[aria-busy="true"] canvas {
+  opacity: 0.35;
+  transition: opacity 0.2s;
+}

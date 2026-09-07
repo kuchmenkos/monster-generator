@@ -1,9 +1,9 @@
 import * as T from "three";
 import { rng, palettes, pupilTypes, type Genome } from "./genome";
 import { earShell, pupilGeometry } from "./anatomy";
-import { refineNasalPatch } from "./sculpt";
+import { lipContour, sweep, patchGeometry } from "./sculpt";
+import { buildSkinBuffers, skinGeometry, type SkinBuffers } from "./skin-mesh";
 import { morphology } from "./morphology";
-import { sweep, patchGeometry } from "./sculpt";
 import { growCoat } from "./coats";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import {
@@ -13,7 +13,6 @@ import {
   type Reaction,
 } from "./motion";
 import {
-  mergeVertices,
   mergeGeometries,
 } from "three/addons/utils/BufferGeometryUtils.js";
 
@@ -29,10 +28,12 @@ export interface Creature {
   setMood: (mood: Mood) => void;
   react: (reaction: Reaction) => void;
   look: (x: number, y: number) => void;
+  /** Body lean + eye gaze toward a direction in [-1,1] screen-ish space. */
+  attention: (x: number, y: number, weight?: number) => void;
   dispose: () => void;
 }
 const clamp = T.MathUtils.clamp;
-export function buildCreature(g: Genome): Creature {
+export function buildCreature(g: Genome, prepared?: SkinBuffers): Creature {
   const m = morphology(g),
     r = rng(g.seed + "/details-v2"),
     colors = palettes[g.genes.palette];
@@ -49,10 +50,10 @@ export function buildCreature(g: Genome): Creature {
   for (let y = 0; y < 128; y++)
     for (let x = 0; x < 128; x++) {
       const v =
-        128 +
-        Math.sin(x * 0.83 + Math.sin(y * 0.7)) * 19 +
-        Math.sin(y * 1.2 + x * 0.41) * 13 +
-        (r() - 0.5) * 18;
+        230 +
+        Math.sin(x * 0.83 + Math.sin(y * 0.7)) * 5 +
+        Math.sin(y * 1.2 + x * 0.41) * 4 +
+        (r() - 0.5) * 4;
       grainData.set([v, v, v, 255], (y * 128 + x) * 4);
     }
   const grain = new T.DataTexture(grainData, 128, 128);
@@ -62,14 +63,14 @@ export function buildCreature(g: Genome): Creature {
   grain.needsUpdate = true;
   const skin = new T.MeshPhysicalMaterial({
     vertexColors: true,
-    roughness: [0.38, 0.87, 0.27][g.genes.finish],
+    roughness: [0.52, 0.88, 0.34][g.genes.finish],
     sheen: 1,
     sheenColor: new T.Color(colors[1]),
     sheenRoughness: 0.7,
     bumpMap: grain,
-    bumpScale: g.genes.finish === 2 ? 0.007 : 0.012,
-    clearcoat: g.genes.finish === 1 ? 0 : 0.4,
-    side: T.DoubleSide,
+    bumpScale: g.genes.finish === 2 ? 0.004 : 0.007,
+    clearcoat: g.genes.finish === 1 ? 0 : 0.22,
+    side: T.FrontSide,
   });
   const coatMat = new T.MeshPhysicalMaterial({
     vertexColors: true,
@@ -78,17 +79,20 @@ export function buildCreature(g: Genome): Creature {
     sheenColor: new T.Color(colors[1]),
     side: T.DoubleSide,
   });
+  const coatOpen={value:0},coatSmile={value:0};
   const coatTime = { value: 0 },
     coatMotion = { value: 0 };
   coatMat.onBeforeCompile = (shader) => {
     shader.uniforms.coatTime = coatTime;
+    shader.uniforms.coatOpen=coatOpen;shader.uniforms.coatSmile=coatSmile;
     shader.uniforms.coatMotion = coatMotion;
     shader.vertexShader =
-      "attribute float flex; uniform float coatTime; uniform float coatMotion;\n" +
+      "attribute float flex; attribute vec3 jawMorph; attribute vec3 smileMorph; uniform float coatOpen; uniform float coatSmile; uniform float coatTime; uniform float coatMotion;\n" +
       shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <begin_vertex>",
       `#include <begin_vertex>
+      transformed += jawMorph * coatOpen + smileMorph * coatSmile;
       transformed.x += sin(coatTime * 1.45 + position.y * 4.0 + position.z * 3.0) * flex * coatMotion;
       transformed.z += cos(coatTime * 1.3 + position.x * 4.0) * flex * coatMotion * 0.6;
     `,
@@ -108,12 +112,13 @@ export function buildCreature(g: Genome): Creature {
   const cavityMat = new T.MeshStandardMaterial({
     color: "#2e1927",
     roughness: 1,
-    side: T.DoubleSide,
+    side: T.FrontSide,
   });
   const toothMat = new T.MeshPhysicalMaterial({
     color: "#f0dfbd",
     roughness: 0.37,
     clearcoat: 0.18,
+    transparent: true,
   });
   const sclera = new T.MeshPhysicalMaterial({
     color: "#eee4ce",
@@ -153,50 +158,17 @@ export function buildCreature(g: Genome): Creature {
     parent.add(obj);
     return obj;
   }
-  // A single continuous skin, including nose, cheek pads, brow ridges and rear lobes.
-  let headGeo: T.BufferGeometry = new T.SphereGeometry(1, 192, 144);
-  headGeo = refineNasalPatch(headGeo);
-  if (g.genes.nose !== 10)
-    headGeo = refineNasalPatch(headGeo, 0.35, -0.25, 0.28);
-  let hp = headGeo.attributes.position;
-  const headColors: number[] = [];
-  for (let i = 0; i < hp.count; i++) {
-    const q = m.point(new T.Vector3().fromBufferAttribute(hp, i));
-    hp.setXYZ(i, q.x, q.y, q.z);
-    const c = m.color(q.x, q.y, q.z);
-    headColors.push(c.r, c.g, c.b);
-  }
-  headGeo.setAttribute("color", new T.Float32BufferAttribute(headColors, 3));
-  const indices = headGeo.index!,
-    keep: number[] = [];
-  for (let i = 0; i < indices.count; i += 3) {
-    const a = indices.getX(i),
-      b = indices.getX(i + 1),
-      c = indices.getX(i + 2);
-    const x = (hp.getX(a) + hp.getX(b) + hp.getX(c)) / 3,
-      y = (hp.getY(a) + hp.getY(b) + hp.getY(c)) / 3,
-      z = (hp.getZ(a) + hp.getZ(b) + hp.getZ(c)) / 3;
-    if (
-      z > 0 &&
-      (x / (m.mouthWidth + 0.035)) ** 2 + ((y - m.mouthY) / 0.125) ** 2 < 1
-    )
-      continue;
-    keep.push(a, b, c);
+  // Nose, cavity walls and the skull share one indexed surface.
+  const headGeo=skinGeometry(prepared ?? buildSkinBuffers(g),g);
+  const hp=headGeo.attributes.position;
+  const indices=headGeo.index!,keep:number[]=[];
+  for(let i=0;i<indices.count;i+=3){
+    const a=indices.getX(i),b=indices.getX(i+1),c=indices.getX(i+2);
+    const x=(hp.getX(a)+hp.getX(b)+hp.getX(c))/3,y=(hp.getY(a)+hp.getY(b)+hp.getY(c))/3,z=(hp.getZ(a)+hp.getZ(b)+hp.getZ(c))/3;
+    if(z>0&&(x/(m.mouthWidth+.035))**2+((y-m.mouthY)/.115)**2<1)continue;
+    keep.push(a,b,c);
   }
   headGeo.setIndex(keep);
-  headGeo.deleteAttribute("normal");
-  headGeo.deleteAttribute("uv");
-  const welded = mergeVertices(headGeo, 1e-5);
-  headGeo.dispose();
-  headGeo = welded;
-  hp = headGeo.attributes.position;
-  const uv = new Float32Array(hp.count * 2);
-  for (let i = 0; i < hp.count; i++) {
-    uv[i * 2] = hp.getX(i) / (m.rx * 2) + 0.5;
-    uv[i * 2 + 1] = hp.getY(i) / (m.ry * 2) + 0.5;
-  }
-  headGeo.setAttribute("uv", new T.BufferAttribute(uv, 2));
-  headGeo.computeVertexNormals();
   const smileDelta = new Float32Array(hp.count * 3),
     rearDelta = new Float32Array(hp.count * 3);
   for (let i = 0; i < hp.count; i++) {
@@ -258,16 +230,17 @@ export function buildCreature(g: Genome): Creature {
   for (const side of [-1, 1]) {
     const group = new T.Group(),
       geo = earShell(g, side);
-    group.position.set(side * m.rx * 0.8, m.ry * 0.43, -0.035);
+    const probe = m.point(new T.Vector3(side * 0.78, 0.4, 0.14).normalize());
     const close = m.eyes.some(
-      (e) =>
-        Math.hypot(e.x - group.position.x, e.y - group.position.y) <
-        e.radius + 0.19,
+      (e) => Math.hypot(e.x - probe.x, e.y - probe.y) < e.radius + 0.19,
     );
-    if (close) {
-      group.position.y -= 0.15;
-      group.position.z -= 0.12;
-    }
+    const dir = new T.Vector3(
+      side * 0.78,
+      close ? 0.22 : 0.4,
+      close ? 0.28 : 0.14,
+    );
+    const root = m.point(dir.normalize());
+    group.position.copy(root).addScaledVector(dir, -0.03);
     ears.push(group);
     body.add(group);
     const inner = geo.userData.innerMix as number[],
@@ -305,9 +278,8 @@ export function buildCreature(g: Genome): Creature {
       sides = kind === 2 || kind === 7 ? [0] : [-1, 1];
     for (const side of sides) {
       const x = side * m.rx * (0.4 + hr() * 0.09),
-        y = m.ry * (side === 0 ? 0.94 : 0.88),
-        z = m.front(x, y) * 0.18;
-      const start = new T.Vector3(x, y, z),
+        y = m.ry * (side === 0 ? 0.94 : 0.88);
+      const start = m.skinFront(x, y),
         length = kind === 6 ? 0.2 + hr() * 0.13 : 0.28 + hr() * 0.38;
       const pts = [start];
       if (kind === 1) {
@@ -535,14 +507,34 @@ export function buildCreature(g: Genome): Creature {
         for (let j = 0; j <= cols; j++) {
           const t = row / rows,
             a = (j / cols) * Math.PI * 2;
-          const ix = Math.cos(a) * e.radius * 0.92;
-          const iy =
-            Math.sin(a) *
+          const ca = Math.cos(a),
+            sa = Math.sin(a);
+          let ix = ca * e.radius * 0.92;
+          let iy =
+            sa *
               e.radius *
               e.lid *
               (1 - closed * 0.989) *
               (1 - Math.max(0, faceSmile) * 0.23) +
             ix * e.tilt;
+          if (e.squareness) {
+            const sqx = Math.sign(ca) * Math.abs(ca) ** 0.32 * e.radius * 0.92;
+            const sqy =
+              Math.sign(sa) *
+                Math.abs(sa) ** 0.32 *
+                e.radius *
+                e.lid *
+                (1 - closed * 0.989) +
+              sqx * e.tilt;
+            ix = T.MathUtils.lerp(ix, sqx, e.squareness);
+            iy = T.MathUtils.lerp(iy, sqy, e.squareness);
+          }
+          if (e.tear) {
+            const inner = Math.max(0, -Math.sign(e.x || 1) * ca);
+            iy -= e.tear * 0.14 * e.radius * inner * inner;
+          }
+          if (e.heart)
+            iy += e.heart * 0.12 * e.radius * Math.max(0, sa) * Math.cos(a * 2);
           const iz =
             anchor.z +
             Math.sqrt(Math.max(0.001, e.radius ** 2 - ix ** 2 - iy ** 2)) +
@@ -567,37 +559,12 @@ export function buildCreature(g: Genome): Creature {
       lid.userData.closure = closed;
     }
     const browGroup = new T.Group();
-    browGroup.position.set(
-      e.x,
-      e.y + e.radius * 0.98,
-      m.front(e.x, e.y + e.radius * 0.98),
-    );
+    const browAt = m.skinFront(e.x, e.y + e.radius * 0.98);
+    browGroup.position.copy(browAt);
     body.add(browGroup);
     browGroups.push(browGroup);
     const browParts: T.BufferGeometry[] = [];
-    const strandCount = g.genes.brows === 4 ? 65 : 1;
-    for (let j = 0; j < strandCount; j++) {
-      const u =
-        strandCount === 1 ? 0 : ((j / (strandCount - 1)) * 2 - 1) * e.radius;
-      const start = new T.Vector3(
-        u,
-        -Math.abs(u) * 0.18 + (strandCount > 1 ? (er() - 0.5) * 0.035 : 0),
-        0,
-      );
-      const points =
-        strandCount === 1
-          ? [
-              new T.Vector3(-e.radius, 0, -0.03),
-              new T.Vector3(0, 0.075, 0.025),
-              new T.Vector3(e.radius, -0.015, -0.03),
-            ]
-          : [
-              start,
-              start
-                .clone()
-                .add(new T.Vector3(0.015, 0.05 + er() * 0.04, 0.025)),
-              start.clone().add(new T.Vector3(0.045, 0.075, 0.01)),
-            ];
+    const stick = (points: T.Vector3[], radius: number, segs = 12) => {
       for (const point of points)
         point.z +=
           m.front(
@@ -605,14 +572,103 @@ export function buildCreature(g: Genome): Creature {
             browGroup.position.y + point.y,
           ) -
           browGroup.position.z -
-          (strandCount > 1 ? 0.012 : 0.023);
-      browParts.push(
-        sweep(
-          points,
-          strandCount === 1 ? (g.genes.brows === 2 ? 0.018 : 0.035) : 0.006,
-          strandCount === 1 ? 20 : 5,
+          0.02;
+      browParts.push(sweep(points, radius, segs, 5));
+    };
+    const kind = g.genes.brows;
+    const span = kind === 5 ? 1.28 : 1;
+    if (kind === 4 || kind === 14) {
+      const n = kind === 4 ? 65 : 28;
+      for (let j = 0; j < n; j++) {
+        const u = ((j / (n - 1)) * 2 - 1) * e.radius;
+        const start = new T.Vector3(
+          u,
+          -Math.abs(u) * 0.18 + (er() - 0.5) * 0.035,
+          0,
+        );
+        stick(
+          [
+            start,
+            start.clone().add(new T.Vector3(0.015, 0.05 + er() * 0.04, 0.025)),
+            start.clone().add(new T.Vector3(0.045, 0.075, 0.01)),
+          ],
+          kind === 14 ? 0.01 : 0.006,
           5,
-        ),
+        );
+      }
+    } else if (kind === 8) {
+      for (const u of [-0.55, 0, 0.55])
+        stick(
+          [
+            new T.Vector3(u * e.radius, 0, 0),
+            new T.Vector3(u * e.radius, 0.018, 0.012),
+            new T.Vector3(u * e.radius + 0.01, 0.02, 0),
+          ],
+          0.016,
+          6,
+        );
+    } else if (kind === 11) {
+      for (const u of [-0.6, 0, 0.6])
+        stick(
+          [
+            new T.Vector3((u - 0.12) * e.radius, 0.01, 0),
+            new T.Vector3(u * e.radius, 0.02, 0.01),
+            new T.Vector3((u + 0.12) * e.radius, 0.01, 0),
+          ],
+          0.014,
+          6,
+        );
+    } else if (kind === 12) {
+      const turns = 3;
+      const pts: T.Vector3[] = [];
+      for (let i = 0; i <= 12; i++) {
+        const t = i / 12,
+          a = t * Math.PI * 2 * turns;
+        pts.push(
+          new T.Vector3(
+            Math.cos(a) * 0.045 + t * e.radius * 0.4 - e.radius * 0.2,
+            Math.sin(a) * 0.045 + 0.02,
+            0.01,
+          ),
+        );
+      }
+      stick(pts, 0.01, 16);
+    } else if (kind === 13) {
+      stick(
+        [
+          new T.Vector3(-e.radius, 0.02, 0),
+          new T.Vector3(-e.radius * 0.3, 0.08, 0.02),
+          new T.Vector3(e.radius * 0.15, -0.02, 0),
+          new T.Vector3(e.radius, 0.07, 0.01),
+        ],
+        0.012,
+        12,
+      );
+    } else if (kind === 9) {
+      stick(
+        [
+          new T.Vector3(-e.radius, 0, -0.03),
+          new T.Vector3(-e.radius * 0.4, 0.07, 0.02),
+          new T.Vector3(0, -0.01, 0.02),
+          new T.Vector3(e.radius * 0.4, 0.07, 0.02),
+          new T.Vector3(e.radius, 0, -0.03),
+        ],
+        0.02,
+        18,
+      );
+    } else {
+      const lift =
+        kind === 7 ? 0.14 : kind === 6 ? -0.05 : kind === 10 ? -0.04 : 0.075;
+      const innerY = kind === 6 ? 0.1 : kind === 10 ? -0.08 : 0;
+      const outerY = kind === 6 ? -0.04 : kind === 10 ? 0.02 : -0.015;
+      stick(
+        [
+          new T.Vector3(-e.radius * span, innerY, -0.03),
+          new T.Vector3(0, lift, 0.025),
+          new T.Vector3(e.radius * span, outerY, -0.03),
+        ],
+        kind === 2 ? 0.018 : kind === 0 || kind === 1 ? 0.035 : 0.024,
+        20,
       );
     }
     const bg = mergeGeometries(browParts);
@@ -621,7 +677,14 @@ export function buildCreature(g: Genome): Creature {
       mesh(
         browGroup,
         bg,
-        g.genes.brows === 4 || g.genes.brows === 2 ? dark : flesh,
+        kind === 4 ||
+          kind === 2 ||
+          kind === 8 ||
+          kind === 11 ||
+          kind === 13 ||
+          kind === 14
+          ? dark
+          : flesh,
         "brow",
       );
     update(0);
@@ -651,12 +714,13 @@ export function buildCreature(g: Genome): Creature {
   const mouthGroup = new T.Group();
   mouthGroup.name = "mouth";
   body.add(mouthGroup);
-  const mouthGeo = patchGeometry(9, 96, () => new T.Vector3());
+  const lipRows=18;
+  const mouthGeo = patchGeometry(lipRows, 96, () => new T.Vector3());
   const mouth = mesh(mouthGroup, mouthGeo, skin, "living-lips");
   const mc: number[] = [];
-  for (let row = 0; row <= 9; row++)
+  for (let row = 0; row <= lipRows; row++)
     for (let j = 0; j <= 96; j++) {
-      const t = row / 9,
+      const t = row / lipRows,
         a = (j / 96) * Math.PI * 2,
         c = m.color(Math.cos(a) * mouthWidth, mouthY + Math.sin(a) * 0.13, 1);
       c.lerp(new T.Color(colors[3]), (1 - t) ** 3 * 0.29);
@@ -669,7 +733,7 @@ export function buildCreature(g: Genome): Creature {
       const a = u * Math.PI * 2,
         x = Math.cos(a) * (mouthWidth + 0.03) * t,
         y = mouthY + Math.sin(a) * 0.24 * t;
-      return new T.Vector3(x, y, m.front(x, y) - 0.035 - 0.22 * (1 - t * t));
+      return m.skinFront(x, y, -0.035 - 0.22 * (1 - t * t));
     }),
     cavityMat,
     "oral-cavity",
@@ -730,17 +794,16 @@ export function buildCreature(g: Genome): Creature {
             : 0
           : 0;
       const seam = 0.035 * u * u + m.mouthTilt * u;
-      tooth.position.set(
+      const seat = m.skinFront(
         x,
-        mouthY + seam + dir * length * 0.42,
-        m.front(x, mouthY) - 0.065 - (row === 1 ? 0.025 : 0),
+        mouthY + seam,
+        -0.065 - (row === 1 ? 0.025 : 0),
       );
+      tooth.position.set(seat.x, seat.y + dir * length * 0.42, seat.z);
       tooth.userData = { restY: tooth.position.y, u };
       tooth.castShadow = true;
       jaw.add(tooth);
-      gumPoints.push(
-        new T.Vector3(x, mouthY + seam, m.front(x, mouthY) - 0.075),
-      );
+      gumPoints.push(m.skinFront(x, mouthY + seam, -0.075));
     }
     mesh(jaw, sweep(gumPoints, 0.025, 32, 8, 0.016), pink, "gums");
   }
@@ -752,53 +815,55 @@ export function buildCreature(g: Genome): Creature {
   );
   tongue.name = "tongue";
   function jawShift(x: number, y: number, open: number) {
-    return (
-      -0.095 *
-      open *
-      clamp((mouthY - y) / 0.37, 0, 1) *
-      Math.exp(-((x / 0.66) ** 4))
-    );
+    return m.deformation(new T.Vector3(x,y,1),open,0).y;
   }
   function updateMouth(open: number) {
     mouth.userData.openness = open;
+    coatOpen.value=open;coatSmile.value=faceSmile;
     const pos = mouthGeo.attributes.position;
-    for (let row = 0; row <= 9; row++)
+    for (let row = 0; row <= lipRows; row++)
       for (let j = 0; j <= 96; j++) {
-        const t = row / 9,
-          a = (j / 96) * Math.PI * 2,
-          c = Math.cos(a),
-          s = Math.sin(a);
+        const t = row / lipRows,
+          a = (j / 96) * Math.PI * 2;
+        const lip = lipContour(
+          m.mouthSpec.contour,
+          Math.cos(a),
+          Math.sin(a),
+          a,
+        );
+        const c = lip.c,
+          s = lip.s;
         const ix = c * mouthWidth * (1 + faceSmile * 0.1 - faceRound * 0.22),
           iy =
             mouthY +
-            (0.035 + faceSmile * 0.1 - (g.genes.mouth === 4 ? 0.075 : 0)) *
-              c *
-              c +
+            (0.035 + faceSmile * 0.1 - m.mouthSpec.droop) * c * c +
             m.mouthTilt * c +
-            s * (0.006 + open * (s > 0 ? 0.095 : 0.17));
+            s * (0.0015 + open * (s > 0 ? 0.095 : 0.17));
         const ox = c * (mouthWidth + 0.155),
           oy = mouthY + s * 0.25;
         const x = T.MathUtils.lerp(ix, ox, t),
           y = T.MathUtils.lerp(iy, oy + jawShift(ox, oy, open), t);
+        const skin = m.nasal.warp(x, y);
         const z =
           m.front(x, y) -
           0.002 +
-          (1 - t) ** 2 *
-            ([0.025, 0.033, 0.04, 0.095, 0.045, 0.13][g.genes.mouth] +
-              Math.sin(Math.PI * t) * 0.025);
-        pos.setXYZ(row * 97 + j, x, y, z);
+          (1-t)**2 * m.mouthSpec.thick * (.48+1.7*Math.sin(Math.PI*t)) * (s<0?1.14:.92) * (1+.07*c);
+        pos.setXYZ(row * 97 + j, skin.x, skin.y, z);
       }
     pos.needsUpdate = true;
     mouthGeo.computeVertexNormals();
-    upper.visible = lower.visible = tongue.visible = open > 0.16;
+    const exposure=T.MathUtils.smoothstep(open,.015,.20);
+    toothMat.opacity=exposure;
+    upper.visible=lower.visible=true;
+    tongue.visible=open>.07;
+    upper.position.z=lower.position.z=-.055*(1-exposure);
     upper.scale.x = lower.scale.x = 1 + faceSmile * 0.1 - faceRound * 0.22;
     for (const jaw of [upper, lower])
       for (const tooth of jaw.children)
         if (tooth.name === "tooth")
           tooth.position.y =
             tooth.userData.restY +
-            (faceSmile * 0.1 - (g.genes.mouth === 4 ? 0.075 : 0)) *
-              tooth.userData.u ** 2;
+            (faceSmile * 0.1 - m.mouthSpec.droop) * tooth.userData.u ** 2;
     upper.position.y = open * 0.088;
     lower.position.y = -open * 0.156;
     tongue.position.y = mouthY - 0.035 - open * 0.12;
@@ -810,13 +875,20 @@ export function buildCreature(g: Genome): Creature {
       hp.setY(i, y + (z > 0 ? jawShift(x, y, open) : 0));
     }
     hp.needsUpdate = true;
-    headGeo.computeVertexNormals();
+    const normals=headGeo.attributes.normal, e=.002;
+    for(let i=0;i<hp.count;i++){
+      const x=restHead[i*3],y=restHead[i*3+1],z=restHead[i*3+2];
+      if(z>0&&y<mouthY+.11){const at=m.attachment(x,y).normal;
+        const dyx=(jawShift(x+e,y,open)-jawShift(x-e,y,open))/(2*e),dyy=(jawShift(x,y+e,open)-jawShift(x,y-e,open))/(2*e);
+        at.set(at.x-at.y*dyx/(1+dyy),at.y/(1+dyy),at.z).normalize();normals.setXYZ(i,at.x,at.y,at.z);
+      }
+    }normals.needsUpdate=true;
   }
   updateMouth(0);
   const lipPos = mouthGeo.attributes.position,
     lipColors = mouthGeo.attributes.color;
   for (let i = 0; i < lipPos.count; i++) {
-    const t = Math.floor(i / 97) / 9,
+    const t = Math.floor(i / 97) / lipRows,
       c = m.color(lipPos.getX(i), lipPos.getY(i), lipPos.getZ(i));
     c.lerp(new T.Color(colors[3]), (1 - t) ** 3 * 0.29);
     lipColors.setXYZ(i, c.r, c.g, c.b);
@@ -920,7 +992,12 @@ export function buildCreature(g: Genome): Creature {
     lookX = 0,
     lookY = 0,
     gazeX = 0,
-    gazeY = 0;
+    gazeY = 0,
+    attnX = 0,
+    attnY = 0,
+    attnW = 0,
+    bodyYaw = 0,
+    bodyPitch = 0;
   const animate: Creature["animate"] = (
     time,
     speech,
@@ -975,6 +1052,12 @@ export function buildCreature(g: Genome): Creature {
       1 + breath * 0.7 + press * 0.5,
     );
     body.position.y = -1.245 - bottomY * body.scale.y + pose.hop;
+    const yawTarget = attnX * attnW * 0.22;
+    const pitchTarget = attnY * attnW * 0.14;
+    bodyYaw = T.MathUtils.lerp(bodyYaw, yawTarget, 1 - Math.exp(-dt * 8));
+    bodyPitch = T.MathUtils.lerp(bodyPitch, pitchTarget, 1 - Math.exp(-dt * 8));
+    body.rotation.y = bodyYaw;
+    body.rotation.x = bodyPitch;
     body.rotation.z = pose.roll;
     tail.rotation.y = reduced ? 0 : Math.sin(time * 1.2 + phase) * 0.025 + rear;
     tail.position.x = rear * 0.45;
@@ -1034,6 +1117,13 @@ export function buildCreature(g: Genome): Creature {
     look(x, y) {
       lookX = clamp(x, -1, 1);
       lookY = clamp(y, -1, 1);
+    },
+    attention(x, y, weight = 1) {
+      attnX = clamp(x, -1, 1);
+      attnY = clamp(y, -1, 1);
+      attnW = clamp(weight, 0, 1);
+      lookX = attnX;
+      lookY = attnY;
     },
     dispose() {
       const geometries = new Set<T.BufferGeometry>(),

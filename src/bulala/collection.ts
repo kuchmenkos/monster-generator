@@ -1,5 +1,5 @@
 import { migrateGenome, signature, type Genome } from "./genome";
-export const RENDER_VERSION = 4;
+export const RENDER_VERSION = 8;
 export type Saved = {
   genome: Genome;
   image: string;

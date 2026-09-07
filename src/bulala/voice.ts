@@ -1,4 +1,6 @@
 import { character, type Genome } from "./genome";
+import { getCachedAudio, setCachedAudio } from "./game/tts-cache";
+
 export class Voice {
   context?: AudioContext;
   source?: AudioBufferSourceNode;
@@ -114,44 +116,87 @@ export class Voice {
     this.abort = new AbortController();
     this.onState("loading");
     try {
-      const response = await fetch("/api/bulala/speak", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: this.abort.signal,
-        body: JSON.stringify({
-          text,
-          voiceId,
-          seed: g.seed,
-          pitch: character(g).pitch,
-        }),
-      });
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Не удалось создать озвучку.");
+      const cacheId = voiceId || g.seed;
+      let payload =
+        (await getCachedAudio(cacheId, text)) ?? new ArrayBuffer(0);
+      if (!payload.byteLength) {
+        const response = await fetch("/api/bulala/speak", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: this.abort.signal,
+          body: JSON.stringify({
+            text,
+            voiceId,
+            seed: g.seed,
+            pitch: character(g).pitch,
+          }),
+        });
+        // Dev middleware answers JSON on failure; crashed servers may send HTML.
+        payload = await response.arrayBuffer();
+        if (!response.ok || !payload.byteLength) {
+          let message = "";
+          try {
+            message = JSON.parse(new TextDecoder().decode(payload)).error;
+          } catch {
+            message = "";
+          }
+          throw new Error(
+            message ||
+              (response.status === 404
+                ? "Озвучка доступна только в dev-режиме: запусти npm run dev."
+                : `Не удалось создать озвучку (ошибка ${response.status}).`),
+          );
+        }
+        void setCachedAudio(cacheId, text, payload);
       }
-      const buffer = await this.context.decodeAudioData(
-        await response.arrayBuffer(),
-      );
-      if (request !== this.request) return;
-      const source = this.context.createBufferSource();
-      source.buffer = buffer;
-      const analyser = this.context.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      analyser.connect(this.context.destination);
-      this.analyser = analyser;
-      this.data = new Uint8Array(analyser.fftSize);
-      this.source = source;
-      this.active = true;
-      source.onended = () => {
-        if (request === this.request) this.stop();
-      };
-      source.start();
-      this.onState("playing");
+      await this.playBuffer(payload, request);
     } catch (e) {
       if (request !== this.request) return;
       this.stop();
       throw e;
     }
+  }
+
+  /** Play a prefetched/cached MP3 ArrayBuffer (battle prefetch path). */
+  async playArrayBuffer(payload: ArrayBuffer) {
+    this.stop();
+    const request = this.request;
+    this.context ??= new AudioContext();
+    await this.context.resume();
+    if (request !== this.request) return;
+    this.onState("loading");
+    try {
+      await this.playBuffer(payload, request);
+    } catch (e) {
+      if (request !== this.request) return;
+      this.stop();
+      throw e;
+    }
+  }
+
+  private async playBuffer(payload: ArrayBuffer, request: number) {
+    if (!this.context) return;
+    let buffer: AudioBuffer;
+    try {
+      buffer = await this.context.decodeAudioData(payload.slice(0));
+    } catch {
+      throw new Error("Не удалось воспроизвести ответ ElevenLabs.");
+    }
+    if (request !== this.request) return;
+    const source = this.context.createBufferSource();
+    source.buffer = buffer;
+    const analyser = this.context.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    analyser.connect(this.context.destination);
+    this.analyser = analyser;
+    this.data = new Uint8Array(analyser.fftSize);
+    this.source = source;
+    this.active = true;
+    source.onended = () => {
+      if (request === this.request) this.stop();
+    };
+    source.start();
+    this.onState("playing");
   }
 }

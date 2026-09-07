@@ -45,7 +45,11 @@ plugin.configureServer({
 });
 function request(path, data, method = "POST", origin) {
   return new Promise((resolve, reject) => {
-    const req = Readable.from(data === undefined ? [] : [Buffer.isBuffer(data) ? data : JSON.stringify(data)]);
+    const req = Readable.from(
+      data === undefined
+        ? []
+        : [Buffer.isBuffer(data) ? data : JSON.stringify(data)],
+    );
     Object.assign(req, {
       url: "/api/bulala/" + path,
       method,
@@ -156,9 +160,109 @@ test("Voice Design is cached per seed and TTS uses its saved voice; upstream is 
   }
 });
 
+// Regression: `.env.local` held the ElevenLabs key *ID* (hex) rather than the
+// `sk_…` secret. Upstream answered 400 `api_key_id_used_as_api_key`, which the
+// old status map did not cover, so the UI showed "временно недоступен".
+test("An API key ID is rejected up front with a setup hint, never sent upstream", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.ELEVENLABS_API_KEY;
+  globalThis.fetch = () => {
+    throw new Error("upstream must not be called with an unusable key");
+  };
+  try {
+    for (const bad of ["a".repeat(32), "0123456789abcdef".repeat(4)]) {
+      process.env.ELEVENLABS_API_KEY = bad;
+      const status = await request("status", undefined, "GET");
+      assert.equal(status.body.elevenlabs, false);
+      assert.match(status.body.hint, /sk_/);
+      for (const call of [
+        request("design", { seed: "key-id" }),
+        request("speak", { seed: "key-id", text: "привет" }),
+      ]) {
+        const result = await call;
+        assert.equal(result.status, 503);
+        assert.match(result.body.error, /sk_/);
+        assert.doesNotMatch(result.body.error, new RegExp(bad));
+      }
+    }
+    // A key pasted with wrapping quotes or a trailing newline still works.
+    process.env.ELEVENLABS_API_KEY = ' "sk_quoted_key"\n';
+    let seen;
+    globalThis.fetch = async (url, options) => {
+      seen = options.headers["xi-api-key"];
+      return new Response(JSON.stringify({ previews: [] }), { status: 200 });
+    };
+    assert.equal(
+      (await request("status", undefined, "GET")).body.elevenlabs,
+      true,
+    );
+    await request("design", { seed: "quoted" });
+    assert.equal(seen, "sk_quoted_key");
+    // Whitespace inside the key would make fetch throw on an invalid header.
+    process.env.ELEVENLABS_API_KEY = "sk_broken key";
+    assert.match(
+      (await request("design", { seed: "spaced" })).body.error,
+      /пробел/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+    else process.env.ELEVENLABS_API_KEY = originalKey;
+  }
+});
+
+// Upstream failures must become actionable text, and an upstream 400 must not
+// be relayed as a 400 (that status means "your input was invalid" here).
+test("Upstream ElevenLabs errors map to actionable messages", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.ELEVENLABS_API_KEY;
+  process.env.ELEVENLABS_API_KEY = "sk_unit_test_key";
+  const cases = [
+    [400, { detail: { status: "api_key_id_used_as_api_key" } }, 503, /sk_/],
+    [401, { detail: { status: "quota_exceeded" } }, 429, /кредиты/],
+    [401, { detail: { status: "detected_unusual_activity" } }, 403, /подписка/],
+    [404, { detail: { status: "voice_not_found" } }, 404, /Voice ID/],
+    [400, "<html>gateway</html>", 502, /ElevenLabs/],
+    [500, { detail: "boom" }, 500, /ElevenLabs/],
+  ];
+  try {
+    for (const [status, payload, expected, pattern] of cases) {
+      globalThis.fetch = async () =>
+        new Response(
+          typeof payload === "string" ? payload : JSON.stringify(payload),
+          { status },
+        );
+      const result = await request("speak", {
+        seed: "upstream",
+        text: "привет",
+        voiceId: "some-voice-id",
+      });
+      assert.equal(result.status, expected, `upstream ${status} → ${expected}`);
+      assert.match(result.body.error, pattern);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.ELEVENLABS_API_KEY;
+    else process.env.ELEVENLABS_API_KEY = originalKey;
+  }
+});
+
 test("PNG cards are returned as real HTTP attachments without an API key", async () => {
-  const png=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(png);png.writeUInt32BE(1200,16);png.writeUInt32BE(1500,20);
-  const created=await request("cards",png);assert.equal(created.status,200);assert.match(created.body.url,/^\/api\/bulala\/cards\/.*\.png$/);
-  const result=await request(created.body.url.slice("/api/bulala/".length),undefined,"GET");assert.equal(result.status,200);assert.equal(result.headers["Content-Type"],"image/png");assert.match(result.headers["Content-Disposition"],/attachment/);assert.deepEqual(result.body,png);
-  assert.equal((await request("cards",Buffer.from("not a PNG"))).status,400);
+  const png = Buffer.alloc(24);
+  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png);
+  png.writeUInt32BE(1200, 16);
+  png.writeUInt32BE(1500, 20);
+  const created = await request("cards", png);
+  assert.equal(created.status, 200);
+  assert.match(created.body.url, /^\/api\/bulala\/cards\/.*\.png$/);
+  const result = await request(
+    created.body.url.slice("/api/bulala/".length),
+    undefined,
+    "GET",
+  );
+  assert.equal(result.status, 200);
+  assert.equal(result.headers["Content-Type"], "image/png");
+  assert.match(result.headers["Content-Disposition"], /attachment/);
+  assert.deepEqual(result.body, png);
+  assert.equal((await request("cards", Buffer.from("not a PNG"))).status, 400);
 });

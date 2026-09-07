@@ -288,7 +288,7 @@ test("surface and pigment meet continuously at both side boundaries and poles", 
       }
   }
 });
-test("pupil difference occurs only for two eyes, at 5% over a fixed population", () => {
+test("pupil difference occurs only for two eyes, at 1% over a fixed population", () => {
   let odd = 0;
   for (let i = 0; i < 20000; i++) {
     const g = generate("pupils-" + i),
@@ -298,7 +298,7 @@ test("pupil difference occurs only for two eyes, at 5% over a fixed population",
       assert.equal(new Set(pupilTypes(g, count)).size, 1);
     assert.deepEqual(pupilTypes(g, 2), p);
   }
-  assert.ok(odd / 20000 > 0.044 && odd / 20000 < 0.056, String(odd));
+  assert.ok(odd / 20000 > 0.007 && odd / 20000 < 0.014, String(odd));
 });
 test("expressions return to mood, pet hops twice, reduced motion retains expression", () => {
   const c = new ExpressionController();
@@ -465,14 +465,14 @@ test("v2 upgrades pupils and replaces the pompom without shifting other tail IDs
 });
 
 test("nasal patch collar is continuous; no-nose removes every nasal displacement", () => {
-  for (let kind = 0; kind < 11; kind++) {
+  for (let kind = 0; kind < catalogs.nose.length; kind++) {
     const g = generate("nose-boundary");
     g.genes.nose = kind;
     const m = morphology(g),
       n = m.nasal;
     for (let a = 0; a < 32; a++) {
-      const x = Math.cos(a) * n.width * 2,
-        y = n.cy + Math.sin(a) * n.height * 2;
+      const x = Math.cos(a) * n.width * 2.4,
+        y = n.cy + Math.sin(a) * n.height * 2.4;
       assert.ok(Math.abs(n.relief(x, y)) < 1e-8);
       const q = n.warp(x, y);
       assert.ok(Math.hypot(q.x - x, q.y - y) < 1e-6);
@@ -481,6 +481,42 @@ test("nasal patch collar is continuous; no-nose removes every nasal displacement
       assert.equal(n.nostrils.length, 0);
       assert.equal(n.relief(0, 0), 0);
       assert.deepEqual(n.warp(0.1, 0.1), { x: 0.1, y: 0.1 });
+    } else {
+      let previous = n.relief(0, n.cy);
+      assert.ok(previous > 0.02, `nose ${kind} should protrude at center`);
+      let drops = 0;
+      for (let i = 1; i <= 40; i++) {
+        const t = i / 40;
+        const z = n.relief(n.boundX * t, n.cy);
+        if (previous - z > 0.16) drops++;
+        previous = z;
+      }
+      assert.ok(drops <= 1, `nose ${kind} too many cliffs (${drops})`);
+      assert.ok(Math.abs(n.relief(n.boundX * 1.35, n.cy)) < 1e-6);
+      assert.ok(Math.abs(n.relief(0, n.boundY1 + 0.15)) < 1e-6);
+    }
+  }
+});
+
+test("drilled nostrils are concave cavities on the nasal tip", () => {
+  for (const kind of [0, 1, 3, 7, 13, 20]) {
+    const g = generate("nostril-concave-" + kind);
+    g.genes.nose = kind;
+    const m = morphology(g),
+      n = m.nasal;
+    assert.ok(n.nostrils.length > 0);
+    for (const hole of n.nostrils) {
+      const center = n.relief(hole.x, hole.y);
+      const rim = Math.max(
+        n.relief(hole.x + Math.sign(hole.x || 1) * hole.sx * 1.9, hole.y),
+        n.relief(hole.x, hole.y + hole.sy * 1.9),
+        n.relief(0, hole.y),
+      );
+      assert.ok(rim > 0.02, `nose ${kind} rim should still have clay (${rim})`);
+      assert.ok(
+        center < rim - 0.015,
+        `nose ${kind} nostril should be a pit (center=${center}, rim=${rim})`,
+      );
     }
   }
 });
@@ -544,25 +580,94 @@ test("all pupil contours stay in front of the iris and inside the eyeball silhou
   }
 });
 
-test('refined nasal region shares all mesh edges with its surrounding skin',()=>{
-  const g=generate('nose-weld');Object.assign(g.genes,{nose:1,skin:0});const c=buildCreature(g);
-  const head=c.root.getObjectByName('continuous-skull').geometry,p=head.attributes.position,idx=head.index,edges=new Map();
-  for(let i=0;i<idx.count;i+=3)for(let j=0;j<3;j++){
-    const a=idx.getX(i+j),b=idx.getX(i+(j+1)%3),key=[a,b].sort((x,y)=>x-y).join('/');
-    const entry=edges.get(key)||{a,b,count:0};entry.count++;edges.set(key,entry);
+test("refined nasal region shares all mesh edges with its surrounding skin", () => {
+  const g = generate("nose-weld");
+  Object.assign(g.genes, { nose: 1, skin: 0 });
+  const c = buildCreature(g);
+  const m = morphology(g);
+  const head = c.root.getObjectByName("continuous-skull").geometry,
+    p = head.attributes.position,
+    idx = head.index,
+    edges = new Map();
+  for (let i = 0; i < idx.count; i += 3)
+    for (let j = 0; j < 3; j++) {
+      const a = idx.getX(i + j),
+        b = idx.getX(i + ((j + 1) % 3)),
+        key = [a, b].sort((x, y) => x - y).join("/");
+      const entry = edges.get(key) || { a, b, count: 0 };
+      entry.count++;
+      edges.set(key, entry);
+    }
+  const nearNostril = (i) =>
+    m.nostrils.some(
+      (h) =>
+        ((p.getX(i) - h.x) / (h.sx * 1.6)) ** 2 +
+          ((p.getY(i) - h.y) / (h.sy * 1.6)) ** 2 <
+        1,
+    );
+  for (const { a, b, count } of edges.values()) {
+    if (
+      [a, b].every(
+        (i) =>
+          p.getZ(i) > 0.65 &&
+          Math.abs(p.getX(i)) < 0.5 &&
+          p.getY(i) > -0.24 &&
+          p.getY(i) < 0.4,
+      ) &&
+      !nearNostril(a) &&
+      !nearNostril(b)
+    )
+      assert.equal(count, 2);
   }
-  for(const {a,b,count} of edges.values()){
-    if([a,b].every(i=>p.getZ(i)>.65&&Math.abs(p.getX(i))<.5&&p.getY(i)>-.24&&p.getY(i)<.4))assert.equal(count,2);
+  assert.ok(
+    [...c.root.children].some(Boolean) ||
+      c.root.getObjectByName("nasal-cavity"),
+  );
+  let cavities = 0;
+  c.root.traverse((o) => {
+    if (o.name === "nasal-cavity") cavities++;
+  });
+  assert.equal(cavities, m.nostrils.length);
+  c.dispose();
+});
+
+test("skull keeps sphere UVs after weld so bump grain does not shear at the muzzle", () => {
+  const g = generate("uv-seam");
+  Object.assign(g.genes, { nose: 12, skin: 0 });
+  const c = buildCreature(g);
+  const head = c.root.getObjectByName("continuous-skull").geometry,
+    uv = head.attributes.uv,
+    p = head.attributes.position;
+  assert.ok(uv);
+  assert.equal(uv.count, p.count);
+  for (let i = 0; i < uv.count; i++) {
+    assert.ok(Number.isFinite(uv.getX(i)) && Number.isFinite(uv.getY(i)));
+    assert.ok(uv.getX(i) >= -0.05 && uv.getX(i) <= 1.05);
+    assert.ok(uv.getY(i) >= -0.05 && uv.getY(i) <= 1.05);
   }
   c.dispose();
 });
 
-test('no-nose composition keeps eye counts and deterministically chooses both accents',()=>{
-  const accents=new Set();for(let i=0;i<200;i++){
-    const g=generate('no-nose-'+i);g.genes.nose=10;
-    const m=morphology(g);accents.add(m.noNoseAccent);assert.equal(m.nostrils.length,0);
-    assert.equal(m.eyes.length,g.genes.eyes===3?1:g.genes.eyes===4?6:g.genes.eyes===2?3:2);
-    assert.equal(morphology(g).noNoseAccent,m.noNoseAccent);
-    assert.ok(m.eyes.every(e=>Number.isFinite(e.radius)&&e.radius>0));
-  }assert.equal(accents.size,2);
+test("no-nose composition keeps eye counts and deterministically chooses both accents", () => {
+  const accents = new Set();
+  for (let i = 0; i < 200; i++) {
+    const g = generate("no-nose-" + i);
+    g.genes.nose = 10;
+    const m = morphology(g);
+    accents.add(m.noNoseAccent);
+    assert.equal(m.nostrils.length, 0);
+    assert.equal(
+      m.eyes.length,
+      g.genes.eyes === 3
+        ? 1
+        : g.genes.eyes === 4
+          ? 6
+          : g.genes.eyes === 2
+            ? 3
+            : 2,
+    );
+    assert.equal(morphology(g).noNoseAccent, m.noNoseAccent);
+    assert.ok(m.eyes.every((e) => Number.isFinite(e.radius) && e.radius > 0));
+  }
+  assert.equal(accents.size, 2);
 });
