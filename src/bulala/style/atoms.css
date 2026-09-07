@@ -200,6 +200,34 @@ p {
   height: 15px;
 }
 
+/* Stacked number form shared by modal editors (needs, rep, wallet). */
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.field-stack label {
+  font-size: 13px;
+  font-weight: 750;
+}
+.field-stack input[type="number"] {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: #fff;
+}
+.field-row {
+  display: flex;
+  gap: 8px;
+}
+.field-row > button {
+  flex: 1;
+}
+
 .live-label {
   display: flex;
   align-items: center;

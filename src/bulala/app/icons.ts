@@ -39,6 +39,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Smile,
+  CircleHelp,
+  Shield,
+  ThumbsUp,
+  Scale,
+  BatteryCharging,
+  Timer,
 } from "lucide";
 
 export const icons = {
@@ -81,6 +87,12 @@ export const icons = {
   ChevronLeft,
   ChevronRight,
   Smile,
+  CircleHelp,
+  Shield,
+  ThumbsUp,
+  Scale,
+  BatteryCharging,
+  Timer,
 };
 
 export const icon = (name: string, cls = "") =>

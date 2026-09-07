@@ -28,11 +28,18 @@
 .sfx-chip {
   border-radius: 999px;
   padding: 8px 10px;
+  min-height: 38px;
   background: #fff;
   border: 1px solid var(--line);
   font-weight: 700;
   font-size: 12px;
   white-space: nowrap;
+}
+.hype-chip {
+  font-variant-numeric: tabular-nums;
+}
+.hype-chip svg {
+  color: var(--orange);
 }
 .box-button {
   background: var(--ink);
@@ -119,9 +126,24 @@
   padding: 0;
   max-width: min(92vw, 420px);
   width: 100%;
+  max-height: min(86svh, 760px);
   background: var(--card);
   color: inherit;
   box-shadow: 0 30px 80px #00000033;
+}
+/* Keep the heading pinned and scroll only the body on long sheets. */
+#modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+#modal .modal-heading {
+  flex: 0 0 auto;
+}
+#modal #modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 #modal::backdrop {
   background: #312d2988;

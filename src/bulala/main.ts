@@ -7,6 +7,7 @@ import "./style/workshop.css";
 import "./style/battles.css";
 import "./style/reveal.css";
 import "./style/fx.css";
+import "./style/wallet.css";
 
 import { mountShell } from "./app/shell";
 import {
@@ -18,6 +19,7 @@ import {
 import { mountBase, type AppCtx, type Screen } from "./app/base";
 import { mountBattles } from "./app/battles";
 import { mountWorkshop } from "./app/workshop";
+import { openWallet } from "./app/wallet";
 import { Voice } from "./voice";
 import { loadSave, saveSave, type SaveV1 } from "./game/state";
 
@@ -41,6 +43,10 @@ const ctx: AppCtx = {
 
 let current: Screen | undefined;
 let currentRoute: Route | undefined;
+
+// Hype chip is global chrome, so the wallet lives above the screens.
+shell.onHype = () =>
+  openWallet({ ...ctx, onApplied: () => current?.refresh?.() });
 
 function show(route: Route) {
   if (route === currentRoute) return;
@@ -73,6 +79,7 @@ window.addEventListener("storage", (event) => {
     try {
       save = JSON.parse(event.newValue);
       shell.updateChrome(save);
+      current?.refresh?.();
     } catch {
       /* ignore */
     }

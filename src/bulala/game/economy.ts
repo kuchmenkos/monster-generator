@@ -3,6 +3,11 @@
 export const BOX_HYPE_COST = 1000;
 export const BOX_USD_STUB = 2;
 
+/** Manual-tuning bounds for the hype wallet and the box price. */
+export const MAX_HYPE = 9_999_999;
+export const MIN_BOX_COST = 0;
+export const MAX_BOX_COST = 999_999;
+
 export const WIN_REP = 40;
 export const WIN_HYPE = 60;
 export const LOSS_REP = 8;
@@ -63,8 +68,25 @@ export function nextRepTier(rep: number): (typeof REP_TIERS)[number] | null {
   return i < REP_TIERS.length - 1 ? REP_TIERS[i + 1] : null;
 }
 
-export function canAffordBox(hype: number): boolean {
-  return hype >= BOX_HYPE_COST;
+export function canAffordBox(
+  hype: number,
+  cost: number = BOX_HYPE_COST,
+): boolean {
+  return hype >= normalizeBoxCost(cost);
+}
+
+/** Coerce any user/legacy input into a valid hype balance. */
+export function normalizeHype(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return clamp(Math.floor(n), 0, MAX_HYPE);
+}
+
+/** Coerce any user/legacy input into a valid box price. */
+export function normalizeBoxCost(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return BOX_HYPE_COST;
+  return clamp(Math.round(n), MIN_BOX_COST, MAX_BOX_COST);
 }
 
 export function dayKey(now = Date.now()): string {

@@ -1,11 +1,13 @@
-import {
-  migrateGenome,
-  signature,
-  character,
-  type Genome,
-} from "../genome";
+import { migrateGenome, signature, character, type Genome } from "../genome";
 import { parseCollection } from "../collection";
-import { freshCare, stampCare, isFullyCaredToday, setNeedLevel, type CareStamps, type NeedKey } from "./care";
+import {
+  freshCare,
+  stampCare,
+  isFullyCaredToday,
+  setNeedLevel,
+  type CareStamps,
+  type NeedKey,
+} from "./care";
 import {
   applyVote,
   createBattle,
@@ -26,6 +28,8 @@ import {
   battleRewards,
   canAffordBox,
   dayKey,
+  normalizeBoxCost,
+  normalizeHype,
   votesRemaining,
 } from "./economy";
 import { guessCountry } from "./ranking";
@@ -54,6 +58,8 @@ export type SaveV1 = {
   battles: BattleRecord[];
   country: string;
   dailyVotes: { day: string; count: number };
+  /** Box price in hype — tunable by the player in the wallet sheet. */
+  boxCost: number;
 };
 
 const SAVE_KEY = "bulala-save-v1";
@@ -68,6 +74,7 @@ export function emptySave(): SaveV1 {
     battles: [],
     country: guessCountry(),
     dailyVotes: { day: dayKey(), count: 0 },
+    boxCost: BOX_HYPE_COST,
   };
 }
 
@@ -85,7 +92,10 @@ function ownFromGenome(genome: Genome, now = Date.now()): OwnedBulala {
   };
 }
 
-export function migrateFromLegacy(raw: string | null, now = Date.now()): SaveV1 {
+export function migrateFromLegacy(
+  raw: string | null,
+  now = Date.now(),
+): SaveV1 {
   const save = emptySave();
   if (!raw) return save;
   const legacy = parseCollection(raw);
@@ -124,8 +134,9 @@ export function loadSave(): SaveV1 {
         parsed.dailyVotes ??= { day: dayKey(), count: 0 };
         parsed.country ??= guessCountry();
         parsed.hype = Number.isFinite(parsed.hype)
-          ? parsed.hype
+          ? normalizeHype(parsed.hype)
           : STARTER_HYPE;
+        parsed.boxCost = normalizeBoxCost(parsed.boxCost);
         return parsed;
       }
     }
@@ -191,8 +202,7 @@ export function removeCreature(save: SaveV1, id: string): SaveV1 {
   return {
     ...save,
     creatures,
-    activeId:
-      save.activeId === id ? (creatures[0]?.id ?? null) : save.activeId,
+    activeId: save.activeId === id ? (creatures[0]?.id ?? null) : save.activeId,
   };
 }
 
@@ -211,10 +221,26 @@ export function updateCreatureGenome(
   };
 }
 
+/** Current box price — falls back to the default for legacy saves. */
+export function boxCostOf(save: SaveV1): number {
+  return normalizeBoxCost(save.boxCost);
+}
+
 export function buyBoxWithHype(save: SaveV1): { save: SaveV1; error?: string } {
-  if (!canAffordBox(save.hype))
-    return { save, error: `Нужно ${BOX_HYPE_COST} хайпа.` };
-  return { save: { ...save, hype: save.hype - BOX_HYPE_COST } };
+  const cost = boxCostOf(save);
+  if (!canAffordBox(save.hype, cost))
+    return { save, error: `Нужно ${cost} хайпа.` };
+  return { save: { ...save, hype: normalizeHype(save.hype - cost) } };
+}
+
+/** Manual override of the hype wallet (prototype tuning). */
+export function setHype(save: SaveV1, hype: number): SaveV1 {
+  return { ...save, hype: normalizeHype(hype) };
+}
+
+/** Manual override of the box price (prototype tuning). */
+export function setBoxCost(save: SaveV1, cost: number): SaveV1 {
+  return { ...save, boxCost: normalizeBoxCost(cost) };
 }
 
 export function setCreatureNeed(
@@ -272,14 +298,10 @@ export function startBattle(
   const me = save.creatures.find((c) => c.id === myId);
   if (!me) return { save, error: "Нет активной Булалы." };
   const day = dayKey(now);
-  const today =
-    me.battlesToday?.day === day ? me.battlesToday.count : 0;
+  const today = me.battlesToday?.day === day ? me.battlesToday.count : 0;
   if (me.energy <= 0 && today >= FREE_BATTLES_PER_DAY)
     return { save, error: "Нет энергии. Покорми, помой или поговори." };
-  const exclude = [
-    me.genome.seed,
-    ...save.creatures.map((c) => c.genome.seed),
-  ];
+  const exclude = [me.genome.seed, ...save.creatures.map((c) => c.genome.seed)];
   // Prefer another owned creature as opponent when available.
   let opp: BattleSide;
   const others = save.creatures.filter((c) => c.id !== myId);
@@ -357,7 +379,11 @@ function settleRewards(
   const winReward = battleRewards(true, winnerSide.rep, loserSide.rep);
   const lossReward = battleRewards(false, loserSide.rep, winnerSide.rep);
 
-  const apply = (side: BattleSide, won: boolean, reward: { rep: number; hype: number }) => {
+  const apply = (
+    side: BattleSide,
+    won: boolean,
+    reward: { rep: number; hype: number },
+  ) => {
     if (side.owner !== "me" || !side.creatureId) return;
     creatures = creatures.map((c) => {
       if (c.id !== side.creatureId) return c;

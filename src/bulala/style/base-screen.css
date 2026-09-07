@@ -114,27 +114,6 @@
   place-items: center;
   line-height: 1;
 }
-.need-edit {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.need-edit input[type="number"] {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-size: 20px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-.need-edit .need-edit-row {
-  display: flex;
-  gap: 8px;
-}
-.need-edit .need-edit-row button {
-  flex: 1;
-}
 .base-stage {
   flex: 1;
   min-height: 0;

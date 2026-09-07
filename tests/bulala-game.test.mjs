@@ -37,7 +37,11 @@ const {
   dayKey,
   DAILY_VOTE_LIMIT,
   BOX_HYPE_COST,
+  MAX_BOX_COST,
+  MAX_HYPE,
   canAffordBox,
+  normalizeHype,
+  normalizeBoxCost,
   needsAt,
   stampCare,
   freshCare,
@@ -102,6 +106,27 @@ test("daily vote limit resets on new day", () => {
   );
   assert.equal(canAffordBox(BOX_HYPE_COST), true);
   assert.equal(canAffordBox(BOX_HYPE_COST - 1), false);
+});
+
+test("manual hype and box price are clamped to sane numbers", () => {
+  assert.equal(normalizeHype("2500"), 2500);
+  assert.equal(normalizeHype(-5), 0);
+  assert.equal(normalizeHype(12.9), 12);
+  assert.equal(normalizeHype("nope"), 0);
+  assert.equal(normalizeHype(MAX_HYPE * 10), MAX_HYPE);
+
+  assert.equal(normalizeBoxCost("0"), 0);
+  assert.equal(normalizeBoxCost(-100), 0);
+  assert.equal(normalizeBoxCost(undefined), BOX_HYPE_COST);
+  assert.equal(normalizeBoxCost(MAX_BOX_COST + 1), MAX_BOX_COST);
+});
+
+test("box affordability follows the custom price", () => {
+  assert.equal(canAffordBox(0, 0), true);
+  assert.equal(canAffordBox(120, 100), true);
+  assert.equal(canAffordBox(99, 100), false);
+  // Bad input falls back to the default price instead of unlocking free boxes.
+  assert.equal(canAffordBox(0, Number.NaN), false);
 });
 
 test("care needs decay monotonically and clamp to 0–1", () => {

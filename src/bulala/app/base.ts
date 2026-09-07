@@ -15,9 +15,10 @@ import {
   displayName,
   setCreatureNeed,
   setCreatureRep,
+  boxCostOf,
 } from "../game/state";
 import { needsAt, type NeedKey } from "../game/care";
-import { repTier, BOX_HYPE_COST, BOX_USD_STUB } from "../game/economy";
+import { repTier, BOX_USD_STUB } from "../game/economy";
 import { mountRadial, type RadialAction } from "../fx/radial";
 import { playReveal } from "../fx/reveal";
 import { mountCareFx } from "../fx/care-fx";
@@ -36,6 +37,8 @@ export type AppCtx = {
 
 export type Screen = {
   destroy: () => void;
+  /** Repaint after external state edits (wallet, cross-tab sync). */
+  refresh?: () => void;
 };
 
 const NEED_META: Record<
@@ -76,8 +79,8 @@ export function mountBase(ctx: AppCtx): Screen {
     <p class="base-hint" id="base-hint">Зажми <strong>1 сек</strong> — меню действий</p>
     <div class="base-empty" id="base-empty" hidden>
       <p>Пока тихо. Открой первый бокс — и кто-то вылупится.</p>
-      <button class="generate-button" id="empty-box">${icon("Package")} Открыть бокс · ${BOX_HYPE_COST} хайпа</button>
-      <p class="small-note">Или «${BOX_USD_STUB}$» — заглушка оплаты (прототип)</p>
+      <button class="generate-button" id="empty-box">${icon("Package")} Открыть бокс<span id="empty-box-cost"></span></button>
+      <p class="small-note">Или «${BOX_USD_STUB}$» — заглушка оплаты (прототип). Цену в хайпе можно менять — нажми на ⚡ сверху.</p>
     </div>`;
   shell.content.replaceChildren(root);
   refreshIcons();
@@ -127,6 +130,10 @@ export function mountBase(ctx: AppCtx): Screen {
   const paint = () => {
     const save = ctx.getSave();
     shell.updateChrome(save);
+    const cost = boxCostOf(save);
+    root.querySelector("#empty-box-cost")!.textContent = cost
+      ? `· ${cost} хайпа`
+      : "· бесплатно";
     const active = getActive(save);
     const empty = root.querySelector("#base-empty") as HTMLElement;
     if (!active) {
@@ -159,10 +166,10 @@ export function mountBase(ctx: AppCtx): Screen {
     const current = Math.round(needsAt(active.care)[key] * 100);
     const body = shell.modal(
       meta.label,
-      `<div class="need-edit">
+      `<div class="field-stack">
         <p class="small-note">Значение от 0 до 100.</p>
         <input type="number" id="need-input" min="0" max="100" step="1" value="${current}"/>
-        <div class="need-edit-row">
+        <div class="field-row">
           <button type="button" class="secondary-button" data-q="0">0</button>
           <button type="button" class="secondary-button" data-q="50">50</button>
           <button type="button" class="secondary-button" data-q="100">100</button>
@@ -193,7 +200,7 @@ export function mountBase(ctx: AppCtx): Screen {
     if (!active) return;
     const body = shell.modal(
       "Репутация",
-      `<div class="need-edit">
+      `<div class="field-stack">
         <p class="small-note">Сколько очков репа у этой булалы.</p>
         <input type="number" id="rep-input" min="0" step="1" value="${active.rep}"/>
         <button type="button" class="generate-button" id="rep-save">${icon("Check")} Поставить</button>
@@ -204,8 +211,9 @@ export function mountBase(ctx: AppCtx): Screen {
       const n = Math.max(
         0,
         Math.floor(
-          Number((body.querySelector("#rep-input") as HTMLInputElement).value) ||
-            0,
+          Number(
+            (body.querySelector("#rep-input") as HTMLInputElement).value,
+          ) || 0,
         ),
       );
       const next = setCreatureRep(ctx.getSave(), active.id, n);
@@ -244,8 +252,8 @@ export function mountBase(ctx: AppCtx): Screen {
       shell.toast(paid.error);
       shell.modal(
         "Бокс Булалы",
-        `<p>Бокс стоит <strong>${BOX_HYPE_COST} хайпа</strong> или <strong>${BOX_USD_STUB}$</strong>.</p>
-         <p class="small-note">Оплата картой — заглушка прототипа. Заработай хайп батлами, голосами и уходом.</p>
+        `<p>Бокс стоит <strong>${boxCostOf(ctx.getSave())} хайпа</strong> или <strong>${BOX_USD_STUB}$</strong>.</p>
+         <p class="small-note">Оплата картой — заглушка прототипа. Заработай хайп батлами, голосами и уходом — или нажми на ⚡ в шапке и поставь свои числа.</p>
          <p>Сейчас у тебя: <strong>${Math.floor(ctx.getSave().hype)}</strong> хайпа.</p>`,
       );
       return;
@@ -306,7 +314,9 @@ export function mountBase(ctx: AppCtx): Screen {
   };
 
   shell.onBox = () => void openBox();
-  root.querySelector("#empty-box")?.addEventListener("click", () => void openBox());
+  root
+    .querySelector("#empty-box")
+    ?.addEventListener("click", () => void openBox());
 
   const onAction = async (action: RadialAction) => {
     const save = ctx.getSave();
@@ -350,7 +360,12 @@ export function mountBase(ctx: AppCtx): Screen {
         stage?.react("smile");
         const phrase = demoDeck.next("Я не странный. Я коллекционный!");
         try {
-          await voice.speak(phrase, active.genome, "demo", active.voiceId || "");
+          await voice.speak(
+            phrase,
+            active.genome,
+            "demo",
+            active.voiceId || "",
+          );
         } catch (e) {
           shell.toast(e instanceof Error ? e.message : "Не удалось сказать.");
         }
@@ -362,7 +377,10 @@ export function mountBase(ctx: AppCtx): Screen {
   if (stage) {
     const dockEl = root.querySelector(".col-dock") as HTMLElement | null;
     const measureInset = () =>
-      Math.max(96, Math.ceil((dockEl?.getBoundingClientRect().height ?? 92) + 12));
+      Math.max(
+        96,
+        Math.ceil((dockEl?.getBoundingClientRect().height ?? 92) + 12),
+      );
     radial = mountRadial({
       host: root,
       target: stageHost,
@@ -387,6 +405,7 @@ export function mountBase(ctx: AppCtx): Screen {
   syncCreature();
 
   return {
+    refresh: paint,
     destroy() {
       cancelAnimationFrame(animVoice);
       radial?.destroy();
